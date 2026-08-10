@@ -1,0 +1,11 @@
+// 负向用例：Throw of 数组元素类型不匹配
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'Throw<i64[], Error>', found 'Throw<i32[2], Error>'
+//
+// 说明：注解 Throw<i64[], Error> 与值 Ok([1i32,2i32])（推断为 Throw<i32[2], Error>）
+//   Throw 层 strict unify 递归到数组层，i64 vs i32 失败（strict unify 不做 numeric widening）。
+//   显示嵌套 Throw<数组> 结构正确渲染。
+fun main(): void {
+    val t: Throw<i64[], Error> = Ok([1i32, 2i32])
+    println("skip")
+}

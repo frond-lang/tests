@@ -1,0 +1,11 @@
+// [INTENTIONAL-FAIL] match 分支变量作用域泄漏
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+type T = | A(i32) | B(str)
+fun main(): void {
+    val t: T = A(42i32)
+    match t {
+        A(n) => println("A n={n}")
+        B(s) => println("B s={s}")
+    }
+    println("after n={n}")
+}

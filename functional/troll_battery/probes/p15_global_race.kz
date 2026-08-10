@@ -1,0 +1,18 @@
+// 多个 async 并发修改全局变量(数据竞争探测)
+var counter: i32 = 0i32
+
+async fun bump(): Async<void> {
+    var i: i32 = 0i32
+    while i < 1000i32 {
+        counter = counter + 1i32
+        i = i + 1i32
+    }
+}
+
+fun main(): void {
+    val a = bump()
+    val b = bump()
+    a.await()
+    b.await()
+    println("counter={counter} (expect 2000 if serial, less if race)")
+}

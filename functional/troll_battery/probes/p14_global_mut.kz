@@ -1,0 +1,11 @@
+// 全局可变变量:函数内修改
+var counter: i32 = 0i32
+fun inc(): void {
+    counter = counter + 1i32
+}
+fun main(): void {
+    inc()
+    inc()
+    inc()
+    println("counter={counter}")
+}

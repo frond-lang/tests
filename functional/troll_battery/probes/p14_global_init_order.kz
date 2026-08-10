@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] 全局变量初始化顺序依赖
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+val x: i32 = y + 1i32
+val y: i32 = z + 1i32
+val z: i32 = 10i32
+fun main(): void {
+    println("x={x} y={y} z={z}")
+}

@@ -1,0 +1,6 @@
+// NaN 强转 i32
+fun main(): void {
+    val nan: f64 = 0.0 / 0.0
+    val i: i32 = cast(nan).to(i32)
+    println("i={i}")
+}

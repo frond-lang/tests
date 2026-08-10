@@ -1,0 +1,17 @@
+// channel 在 async 间通信
+async fun producer(ch: Channel<i32>): Async<void> {
+    ch.send(42)
+}
+
+async fun consumer(ch: Channel<i32>): Async<i32> {
+    ch.recv()
+}
+
+fun main(): void {
+    val ch = channel<i32>(2)
+    val p = producer(ch)
+    val c = consumer(ch)
+    p.await()
+    val v = c.await()
+    println("v={v}")
+}

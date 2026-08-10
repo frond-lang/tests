@@ -1,0 +1,19 @@
+// async 函数返回值:显式表达式 vs 调用
+async fun retLit(): Async<i32> {
+    42
+}
+
+async fun retCall(): Async<i32> {
+    compute()
+}
+
+async fun compute(): Async<i32> {
+    99
+}
+
+fun main(): void {
+    val a = retLit().await()
+    val b = retCall().await()
+    val c = compute().await()
+    println("a={a} b={b} c={c}")
+}

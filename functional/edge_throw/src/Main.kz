@@ -35,7 +35,7 @@ fun summary(): void {
 }
 
 // ─── 错误子类型定义 ───
-type NotFound: Err = NotFound(msg: str)
+type UserNotFound: Err = UserNotFound(msg: str)
 type Timeout: Err = Timeout(msg: str)
 type Rec = Rec(v: i32)
 
@@ -91,7 +91,7 @@ fun useRisky(b: bool): Throw<i32, Error> {
 
 // ─── 6. 多 catch 模式（不同错误子类型）───
 fun lookup(id: i32): Throw<str, Error> {
-    if id < 0 { throw NotFound("negative id") }
+    if id < 0 { throw UserNotFound("negative id") }
     if id == 0 { throw Timeout("timed out") }
     Ok("user-" + cast(id).to(str))
 }
@@ -224,9 +224,9 @@ fun main(): void {
     println("--- 6. Multiple catch patterns ---")
     match lookup(-1i32) {
         Ok(_) => check(false, "lookup(-1) should fail")
-        Error(NotFound(m)) => check(m == "negative id", "lookup(-1) catches NotFound")
-        Error(Timeout(_)) => check(false, "lookup(-1) should be NotFound not Timeout")
-        Error(_) => check(false, "lookup(-1) should match NotFound")
+        Error(UserNotFound(m)) => check(m == "negative id", "lookup(-1) catches UserNotFound")
+        Error(Timeout(_)) => check(false, "lookup(-1) should be UserNotFound not Timeout")
+        Error(_) => check(false, "lookup(-1) should match UserNotFound")
     }
     match lookup(0i32) {
         Ok(_) => check(false, "lookup(0) should fail")
@@ -365,13 +365,13 @@ fun main(): void {
     println("--- 15. or-pattern error catch ---")
     fun classifyErr(e: Error): str {
         match e {
-            NotFound(_) => "not-found"
+            UserNotFound(_) => "not-found"
             Timeout(_) => "timeout"
             Error("division by zero") => "div-zero"
             Error(_) => "other"
         }
     }
-    check(classifyErr(NotFound("x")) == "not-found", "classify NotFound")
+    check(classifyErr(UserNotFound("x")) == "not-found", "classify UserNotFound")
     check(classifyErr(Timeout("y")) == "timeout", "classify Timeout")
     check(classifyErr(Error("division by zero")) == "div-zero", "classify div-zero by value")
     check(classifyErr(Error("something")) == "other", "classify other")

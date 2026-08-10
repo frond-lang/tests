@@ -1,0 +1,46 @@
+// 验证 #84 修复的通用性：多种 divergence 形式后的不可达代码
+fun alwaysThrow(): Throw<void, Error> {
+    throw Error("always")
+}
+
+fun case1(): i32 {
+    // if 两分支都 return → 后续应报 unreachable
+    if true {
+        return 1
+    } else {
+        return 2
+    }
+    println("unreachable: if-both-return")  // 期望 warning
+    0
+}
+
+fun case2(): i32 {
+    // value 为 if 两分支都 return → 后续应报 unreachable
+    val x = if true {
+        return 1
+    } else {
+        return 2
+    }
+    println("unreachable: valdecl-diverge")  // 期望 warning
+    0
+}
+
+fun case3(): void {
+    // Block 表达式内 throw → 后续应报 unreachable
+    val _ = {
+        throw Error("block-throw")
+    }
+    println("unreachable: block-expr-throw")  // 期望 warning
+}
+
+fun case4(): void {
+    // 调用总是 throw 的函数（返回 Throw 类型）
+    // 注意：Throw<T,E> 语义上不一定总是 throw，只有 Never 才一定
+    // 此处仅为测试当前行为
+    alwaysThrow()
+    println("maybe unreachable: call-throwing-fn")  // 行为待定
+}
+
+fun main(): void {
+    println("ok")
+}

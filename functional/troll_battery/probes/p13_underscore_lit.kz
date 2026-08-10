@@ -1,0 +1,5 @@
+// 下划线分隔字面量
+fun main(): void {
+    val big: i32 = 1_000_000i32
+    println("big={big}")
+}

@@ -1,0 +1,11 @@
+// async 基本执行
+async fun compute(): Async<i32> {
+    42
+}
+
+fun main(): void {
+    val r = compute()
+    println("r type?")
+    val v = r.await()
+    println("v={v}")
+}

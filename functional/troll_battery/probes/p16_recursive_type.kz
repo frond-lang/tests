@@ -1,0 +1,6 @@
+// 递归类型(直接引用自身,ADT)
+type Tree = | Leaf | Node(i32, Tree, Tree)
+fun main(): void {
+    val t: Tree = Node(1i32, Leaf, Node(2i32, Leaf, Leaf))
+    println("ok")
+}

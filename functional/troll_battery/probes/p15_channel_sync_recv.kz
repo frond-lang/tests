@@ -1,0 +1,7 @@
+// 同步 channel recv 返回值
+fun main(): void {
+    val ch = channel<i32>(2)
+    ch.send(42)
+    val v = ch.recv()
+    println("v={v}")
+}

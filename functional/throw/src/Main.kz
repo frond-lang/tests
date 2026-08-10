@@ -34,11 +34,11 @@ fun chainDiv(a: i32, b: i32, c: i32): Throw<i32, Error> {
 }
 
 // 错误子类型
-type NotFound: Err = NotFound(msg: str)
+type UserNotFound: Err = UserNotFound(msg: str)
 type Timeout: Err = Timeout(msg: str)
 
 fun lookup(id: i32): Throw<str, Error> {
-    if id < 0 { throw NotFound("negative id") }
+    if id < 0 { throw UserNotFound("negative id") }
     if id == 0 { throw Timeout("timed out") }
     Ok("user-" + cast(id).to(str))
 }

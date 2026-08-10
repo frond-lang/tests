@@ -1,0 +1,10 @@
+// 正向用例：方案 A（全严）后 numeric widening 不再隐式提升
+// 期望（kuzo debug --stage check，exit 0）：编译通过，无类型错误
+//
+// Bug #60 修复（方案 A 全严）：所有 numeric 转换必须显式 cast。
+// 本文件验证显式 cast 后代码正确编译。
+fun main(): void {
+    val a: i64 = cast(1i32).to(i64)
+    val t: Throw<i64, Error> = Ok(cast(1i32).to(i64))
+    println(a)
+}

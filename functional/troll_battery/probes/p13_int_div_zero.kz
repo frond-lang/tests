@@ -1,0 +1,5 @@
+// 整数除零
+fun main(): void {
+    val z: i32 = 1i32 / 0i32
+    println("z={z}")
+}

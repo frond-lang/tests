@@ -343,7 +343,7 @@ fun main(): void {
     val narrow_pi: f32 = cast(wide_pi).to(f32)
     val back: f64 = cast(narrow_pi).to(f64)
     check(back != wide_pi, "f64 pi -> f32 -> f64 loses precision")
-    check(back == 3.1415927f32, "f32 pi roundtrips")  // 注意需用 f32 字面量比较
+    check(back == 3.1415927f64, "f32 pi roundtrips as f64")  // back 是 f64，用 f64 字面量比较避免混合位宽
 
     summary()
 }

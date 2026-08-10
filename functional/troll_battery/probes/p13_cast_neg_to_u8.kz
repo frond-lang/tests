@@ -1,0 +1,6 @@
+// 负数转 u8
+fun main(): void {
+    val neg: i32 = -1i32
+    val u: u8 = cast(neg).to(u8)
+    println("u={u}")
+}

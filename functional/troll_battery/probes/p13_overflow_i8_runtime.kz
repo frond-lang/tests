@@ -1,0 +1,6 @@
+// 运行时 i8 溢出:127 + 1
+fun main(): void {
+    val maxI8: i8 = 127i8
+    val over: i8 = maxI8 + 1i8
+    println("over={over}")
+}

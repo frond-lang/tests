@@ -1,0 +1,10 @@
+type Color = | Red | Green | Blue
+fun toStr(c: Color): str {
+    match c {
+        Red => "r"
+        Green => "g"
+    }
+}
+fun main(): void {
+    println(toStr(Blue))
+}

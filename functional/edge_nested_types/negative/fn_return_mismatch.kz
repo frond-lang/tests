@@ -1,0 +1,11 @@
+// 负向用例：嵌套函数类型返回值不匹配
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected '() -> i32', found '() -> str'
+//
+// 说明：注解 () -> i32 与值 fun() { "str" }（推断为 () -> str）
+//   函数类型 strict unify 递归比返回类型 i32 vs str 失败。
+//   Display 正确渲染函数类型 "() -> T"。
+fun main(): void {
+    val f: () -> i32 = fun() { "str" }
+    println("skip")
+}

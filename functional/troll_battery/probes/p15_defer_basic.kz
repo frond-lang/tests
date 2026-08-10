@@ -1,0 +1,7 @@
+// defer 基本执行(语句形式,LIFO)
+fun main(): void {
+    println("before defer")
+    defer println("defer 1")
+    defer println("defer 2")
+    println("after defer")
+}

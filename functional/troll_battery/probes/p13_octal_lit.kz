@@ -1,0 +1,5 @@
+// 八进制字面量
+fun main(): void {
+    val oct: i32 = 0o17i32
+    println("oct={oct}")
+}

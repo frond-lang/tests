@@ -1,0 +1,16 @@
+// defer 在普通函数里执行,main 调用
+var log: str = ""
+
+fun withDefer(): void {
+    log = log + "start "
+    defer log = log + "defer1 "
+    defer log = log + "defer2 "
+    log = log + "end "
+}
+
+fun main(): void {
+    withDefer()
+    println("log={log}")
+    defer println("main defer")
+    println("main end")
+}

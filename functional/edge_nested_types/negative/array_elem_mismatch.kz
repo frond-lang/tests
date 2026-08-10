@@ -1,0 +1,11 @@
+// 负向用例：嵌套数组元素类型不匹配
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'i64[][]', found 'i32[2][1]'
+//
+// 说明：注解 i64[][] 与值 [[1i32]]（推断为 i32[2][1]）元素类型不兼容；
+//   try_widen_unify 无 Array 分支，strict unify 递归比元素 i64 vs i32 失败。
+//   注：i32/i64 间 numeric widening 仅在 Throw/Nullable 包裹路径触发，裸数组不 widening。
+fun main(): void {
+    val m: i64[][] = [[1i32, 2i32]]
+    println(m[0][0])
+}

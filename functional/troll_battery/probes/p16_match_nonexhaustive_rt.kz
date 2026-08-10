@@ -1,0 +1,13 @@
+// match 非穷尽:运行时访问漏掉的分支
+type Color = | Red | Green | Blue
+fun name(c: Color): str {
+    match c {
+        Red => "r"
+        Green => "g"
+    }
+}
+fun main(): void {
+    println(name(Red))
+    println(name(Green))
+    println(name(Blue))
+}

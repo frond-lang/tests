@@ -1,0 +1,5 @@
+// 十六进制字面量
+fun main(): void {
+    val hex: i32 = 0xFFi32
+    println("hex={hex}")
+}

@@ -1,0 +1,6 @@
+// u8 运行时溢出:255 + 1
+fun main(): void {
+    val u8max: u8 = 255u8
+    val over: u8 = u8max + 1u8
+    println("over={over}")
+}

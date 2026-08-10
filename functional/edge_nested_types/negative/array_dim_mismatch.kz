@@ -1,0 +1,10 @@
+// 负向用例：数组维度不匹配
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'i32[][]', found 'i32[3]'
+//
+// 说明：注解 i32[][]（二维）与值 [1i32,2i32,3i32]（一维 i32[3]）维度不匹配；
+//   strict unify 的 Array 分支要求双方都是 Array，i32[][] 的元素是 Array 而 i32[3] 的元素是 i32，递归失败。
+fun main(): void {
+    val a: i32[][] = [1i32, 2i32, 3i32]
+    println(a[0])
+}

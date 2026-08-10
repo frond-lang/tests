@@ -1,0 +1,7 @@
+// 前向引用函数:在定义前调用
+fun main(): void {
+    later()
+}
+fun later(): void {
+    println("later called")
+}

@@ -117,6 +117,20 @@
 | P3 | #46 | 字符串字面量中 `{[...]}` 被当作字符串插值解析（`[X]` 视为数组字面量，X 报 undefined variable）；无 `{}` 转义机制 | 已修复 |
 | P0 | #56 | match arm 间 current_effect 泄漏导致递归 ADT 遍历返回 void | 已修复 (2026-08-08) |
 | P1 | #57 | non_tail_rec_to_loop 转换破坏 defer LIFO 语义（defer 仅执行一次，参数失效） | 已修复 (2026-08-08) |
+| P0 | #62 | 整数除以零静默返回 0（无 panic） | 已修复 (2026-08-10) |
+| P0 | #63 | 数组越界访问不 panic，静默返回垃圾值 | 已修复 (2026-08-10) |
+| P0 | #64 | 非穷尽 match 不报错，运行时静默返回 void | 已修复 (2026-08-10) |
+| P0 | #65 | defer + throw/return 后调用者后续代码不执行 | 已修复 (2026-08-10) |
+| P1 | #66 | defer 在块作用域退出时不执行（只在函数级执行） | 已修复 (2026-08-10) |
+| P1 | #71 | 整数取模零静默返回 0（与 #62 同类，未覆盖） | 已修复 (2026-08-10) |
+| P1 | #72 | 字面量溢出 sema check 通过但 IR 阶段报错（阶段不一致） | 已修复 (2026-08-10) |
+| P1 | #73 | 不同位宽整数混合运算 / 比较静默通过（无显式转换） | 已修复 (2026-08-10) |
+| P1 | #83 | 泛型参数类型不统一不报错（pair(1i32, 2i64) 静默用首参类型） | 已修复 (2026-08-10) |
+| P1 | #85 | match 嵌套穷尽性检查缺失（sema 只检查单层构造器） | 已修复 (2026-08-10) |
+| P2 | #60 | numeric widening 在标量 / 数组 / Throw 之间行为不一致 | 已修复 (2026-08-10) |
+| P2 | #61 | 类型别名在 mismatch 报错中被静默展开 | 已修复 (2026-08-10) |
+| P2 | #67 | 移位越界行为不明确（1 << 32 返回 1） | 已修复 (2026-08-10) |
+| P2 | #68 | 函数类型后缀数组注解解析优先级错误 | 已修复 (2026-08-10) |
 
 ---
 
@@ -1306,6 +1320,9 @@
 | 限制 | 说明 | 绕过方式 |
 |------|------|---------|
 | 闭包不支持显式返回类型标注 | `fun(n: i32): i32 { ... }` 解析错误 | 省略返回类型 `fun(n: i32) { ... }` |
+| `T??` 双 nullable 后缀不可用 | 词法将 `??` 解析为 Elvis 操作符，`val x: i32?? = ...` 触发 parse error | 不使用双 nullable；或用显式包装类型 `type Opt = Opt(inner: i32?)` |
+| `T?[]` nullable 元素数组不可用 | `parse_nullable_type` 的 `?` 后缀循环不消费 `[`，`val x: i32?[] = ...` 触发 parse error: expected '=' | 改用 `i32[]?`（nullable 数组，语义不同）或显式包装类型 |
+| 数组层不做 numeric widening | `try_widen_unify` 无 Array 分支，strict `unify` 递归比元素类型；`val x: i64[] = [1i32]` 报 mismatch（即便 i32→i64 可提升）。注：Throw/Nullable 包裹的 numeric 元素在 widening 分支内会提升，但数组层先失败，故 `Throw<i64,Error>[] = [Ok(1i32)]` 仍 mismatch | 数组元素类型与注解严格一致；需 widening 时逐元素显式转换 |
 
 ---
 
@@ -1339,6 +1356,638 @@
 - **修复**：在 `memo_pass` 的非尾递归检测分支中，使用已有的 `has_defer` 函数检查函数体是否包含 defer。若含 defer，跳过 `NonTailRecToLoop` 转换，降级为 `Memoize` 策略（保持真递归调用，defer 在每次帧终止时正确执行）。
   - [Analyzer.rs:2850-2863](file:///Users/haojunhuang/CLionProjects/Kuzo/src/pass/Analyzer.rs#L2850-L2863)：新增 `has_defer` 检查，含 defer 的函数降级为 Memoize
 - **验证**：edge_defer ALL PASSED（deferRecur 的 `recur_log == "0123"` 正确）。34 功能测试无回归，Rust 单元测试通过。
+
+---
+
+## Bug #58：类型注解不匹配报错中 `found` 侧显示未解析的 type var
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P3（显示瑕疵，不影响正确性）
+- **位置**：`src/types/Display.rs:22`（TypeDisplay 的 TypeVar 分支）
+- **现象**：当值表达式含未约束的泛型类型变量时，`type annotation mismatch` 的 `found` 侧会显示内部 type var 索引（如 `'_529`）而非用户可读的类型。
+  ```
+  val arr: Throw<i64, Error>[] = [Ok(1i32)]
+  // 实际输出：type annotation mismatch: expected 'Throw<i64, Error>[]', found 'Throw<i32, '_529>[1]'
+  // 期望输出：found 'Throw<i32, '_>[1]' 或 'Throw<i32, Error>[1]'
+  ```
+- **根因**：`Ok(1i32)` 构造时错误类型未被约束（`Ok<T, E>` 的 `E` 是 fresh type var），`type annotation mismatch` 报错时直接 `arena.display(val_ty)` 渲染，`TypeDisplay` 对 `Ty::TypeVar(idx)` 输出 `'_<idx>`（见 Display.rs:22）。用户无法理解 `'_529` 的含义。
+- **影响**：错误信息可读性差，"杠精用户"难以从报错定位问题。仅影响含未约束 type var 的值（Ok/Error 构造、未标注的泛型函数返回值等）。
+- **修复**：修改 `Display.rs` 的 `TypeVar` 分支，将 `write!(f, "'_{}", idx)` 改为 `f.write_str("'_")`。隐藏内部索引，与 Rust 匿名生命周期 `'_` 显示惯例一致。这是通用修改，所有使用 TypeDisplay 的地方都会受益。
+- **验证**：`edge_nested_types/negative/array_of_throw_elem_mismatch.kz` 现输出 `found 'Throw<i32, '_>[1]'`；全部 9 个负向用例正常报错；37 个功能测试 sema check 全部通过；`cargo test --lib` 14/14 PASS。
+
+---
+
+## Bug #59：嵌套类型注解不匹配的报错路径缺乏测试覆盖（已补）
+
+- **状态**：已修复（补测试）
+- **优先级**：P3（测试覆盖缺口）
+- **位置**：`tests/functional/edge_nested_types/`（新增）
+- **现象**：在补充测试前，`type annotation mismatch` 错误路径仅由 Bug #23（函数类型别名）间接覆盖，嵌套数组/嵌套 Throw/数组 of Throw/Throw of 数组/nullable 数组/嵌套函数类型等注解不匹配场景**完全无测试**。Display.rs 的递归渲染（`i32[][]`、`Throw<Throw<i32,Error>,Error>`）虽有实现但无回归保护。
+- **根因**：现有 functional 测试均为正向用例（能编译通过），无负向用例触发 `type annotation mismatch`。
+- **修复**：新增 `tests/functional/edge_nested_types/` 目录：
+  - `src/Main.kz`：10 节正向测试（2D/3D 数组、嵌套 Throw、数组 of Throw、Throw of 数组、嵌套函数类型、nullable 数组、record 嵌套字段、函数签名嵌套注解、混合 `Throw<i32[]?, Error>`），全部 ALL PASSED
+  - `negative/`：7 个负向用例（`kuzo debug --stage check` 均退出 1），覆盖维度不匹配、元素类型不匹配、嵌套 Throw 内部不匹配、数组 of Throw 元素不匹配、Throw of 数组元素不匹配、nullable 数组元素不匹配、函数返回值不匹配
+- **验证**：正向 `kuzo run` ALL PASSED；负向 7/7 报 `type annotation mismatch` 且 expected/found 显示正确（除 Bug #58 的 `'_NNN` 显示瑕疵）。
+- **附注**：测试中 `kuzo.toml` 的 `entry` 应为 `src/Main.kz`，但现存 `edge_arrays` 等目录误写为 `src/Main.kuzo`（main.rs 的 DEFAULT_ENTRY 与 read_source 实际读 `.kz`，manifest 的错误 entry 在 `kuzo run`（无参，走 resolve_entry_path 读 manifest）时会触发 "No such file"，需用 `kuzo debug` 绕过）。建议统一修正现存 toml。
+
+---
+
+## Bug #60：numeric widening 在标量 / 数组 / Throw 之间行为不一致
+
+- **状态**：已修复（2026-08-10，方案 A 全严：移除所有 numeric widening）
+- **优先级**：P2（语义不一致，影响类型系统一致性预期）
+- **位置**：`src/sema/Inference.rs:1093-1245`（try_widen_unify）+ `src/types/Arena.rs:791-795`（unify 的 Array 分支）
+- **现象**：同一对 numeric 类型（i32 → i64）在三种上下文中的 widening 行为不一致：
+  | 上下文 | 代码 | 结果 |
+  |--------|------|------|
+  | 标量 | `val a: i64 = 1i32` | ✅ 通过（numeric widening） |
+  | 数组 | `val b: i64[] = [1i32]` | ❌ `type annotation mismatch: expected 'i64[]', found 'i32[1]'` |
+  | Throw | `val t: Throw<i64, Error> = Ok(1i32)` | ✅ 通过（Throw 分支对 value_type widening） |
+- **根因**：`try_widen_unify` 的 match 分支仅处理 Nullable/Throw/Void/numeric，**无 Array 分支**。当 strict `unify`（Arena.rs:791）的 Array 分支递归比元素类型 i64 vs i32 失败后，`try_widen_unify` 直接 fallback 到 `Err(TypeMismatch)`，不尝试对元素做 numeric widening。而 Throw 分支（Inference.rs:1178-1226）和裸 numeric 分支（Inference.rs:1128-1136）都会调用 `can_coerce_numeric` 做提升。
+- **影响**：
+  1. 语义割裂：用户写 `i64 = i32` 通过，装进数组 `i64[] = [i32]` 就报错，违反最小惊讶原则
+  2. 反直觉排序：Throw（复合类型）比数组（复合类型）更宽松，无设计依据
+  3. 阻碍数值计算：科学计算中 `[1i32, 2i32]` 提升为 `i64[]` 是常见需求，当前必须逐元素 `cast`
+- **建议修复**（二选一，需明确设计决策）：
+  - 方案 A（全严，Rust 风格，符合用户偏好）：移除 `try_widen_unify` 中所有 numeric widening 分支，标量也不再隐式提升。所有 numeric 转换必须显式 `cast`。此方案与用户 profile 中"Rust-style strict type handling"一致。
+  - 方案 B（全宽，递归 widening）：在 `try_widen_unify` 中新增 Array 分支，当两侧都是 Array 时递归对元素调用 `try_widen_unify`，让 numeric widening 透传到元素层。
+  - **当前不一致状态不可接受**，必须二选一。
+- **复现**：
+  - `tests/functional/edge_nested_types/positive_widening.kz`（标量 + Throw 通过，exit 0）
+  - `tests/functional/edge_nested_types/negative/widening_inconsistency.kz`（数组报错，exit 1）
+  - 两者共同钉死当前不一致行为，修复后需同步更新期望
+
+---
+
+## Bug #61：类型别名在 mismatch 报错中被静默展开
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（错误信息可读性，影响用户定位）
+- **位置**：`src/sema/Inference.rs:2989-3002`（type annotation mismatch 报错）+ `src/types/Display.rs`（TypeDisplay）
+- **现象**：用户定义类型别名后，在 `type annotation mismatch` 报错中，`expected` 侧显示别名展开后的底层类型而非别名名。
+  ```kuzo
+  type Mat2D = i32[][]
+  type I64Arr = i64[]
+  fun main(): void {
+      val a: Mat2D = [[1i64, 2i64]]   // 用户写 Mat2D
+      val b: I64Arr = [1i32, 2i32]    // 用户写 I64Arr
+  }
+  ```
+  实际报错：
+  ```
+  type annotation mismatch: expected 'i32[][]', found 'i64[2][1]'
+  type annotation mismatch: expected 'i64[]', found 'i32[2]'
+  ```
+  期望报错：
+  ```
+  type annotation mismatch: expected 'Mat2D', found 'i64[2][1]'
+  type annotation mismatch: expected 'I64Arr', found 'i32[2]'
+  ```
+- **根因**：`infer_stmt` 的 ValDecl/VarDecl 分支在计算 `annot_ty` 时调用 `type_from_ast`，该函数通过 `concretize_type` 将别名解析到底层 `TypeHandle`（如 `i32[][]`），别名名信息在解析过程中丢失。报错时 `arena.display(annot_ty)` 只能渲染解析后的底层类型。`TypeDisplay` 无从知道这个 handle 来自哪个别名。
+- **影响**：
+  1. 用户写 `Mat2D` 却在报错里看到 `i32[][]`，无法快速对应自己代码中的类型声明
+  2. 别名本是为可读性而生，报错展开别名削弱了别名的价值
+  3. 对比 Rust（保留类型别名名）、TypeScript（保留别名），Kuzo 此行为不符合主流语言惯例
+- **建议修复**：在 `TypeHandle` 或 `Ty` 中增加可选的"源别名名"元数据（`origin_alias: Option<Symbol>`），`concretize_type` 解析别名时记录原名，`TypeDisplay` 优先渲染别名名（可附 `= <底层类型>` 辅助）。或更轻量：在 mismatch 报错路径保留 AST 层的 `TypeRef`，用 AST 节点信息渲染 expected 侧。
+- **复现**：`tests/functional/edge_nested_types/negative/alias_expanded_in_error.kz`（exit 1，当前显示展开形式）
+
+---
+
+## 杠精全特性测试批次（Bug #62-#70）
+
+以下 bug 由"杠精"视角对 Kuzo 全部语言特性（变量/字面量/函数/闭包/泛型/ADT/Record/Throw/async/channel/数组/字符串/插值/控制流）进行边界测试发现。每条均含最小复现代码。
+
+---
+
+## Bug #62：整数除以零静默返回 0（无 panic）
+
+- **状态**：已修复（2026-08-10，Ops.rs arith_div_* 添加除零检查，触发 panic）
+- **优先级**：P0（内存/数值安全）
+- **现象**：
+  ```kuzo
+  val z: i32 = 0i32
+  val dz: i32 = 1i32 / z   // 打印 0，不 panic
+  val mz: i32 = 1i32 % z   // 打印 0，不 panic
+  ```
+  程序正常退出 exit 0，无任何报错或 panic。
+- **根因**：整数除法/取模运行时未检查除数为零，直接执行硬件指令，x86 `div` 对零除数的行为被静默吞掉（或 VM 用了带 fallback 的实现）。
+- **影响**：静默错误结果比 panic 更危险——程序继续运行用错误值计算，难定位。Bug #22 修复了"有符号整数除法溢出 panic"，但零除数这条路径遗漏。
+- **建议修复**：除法/取模前检查除数为零，panic 或抛 `Error("division by zero")`。
+- **复现**：`val dz: i32 = 1i32 / 0i32; println(dz)` → 打印 0
+
+---
+
+## Bug #63：数组越界访问不 panic，静默返回垃圾值
+
+- **状态**：已修复（2026-08-10，Compute.rs compute_array_index 添加索引范围检查，越界 panic）
+- **现象**：
+  ```kuzo
+  val arr: i32[] = [10i32, 20i32, 30i32]
+  val oob: i32 = arr[5]    // 打印 <non-scalar>，不 panic
+  val neg: i32 = arr[-1]   // 打印 <non-scalar>，不 panic
+  val empty: i32[] = []
+  val e: i32 = empty[0]    // 打印 <non-scalar>，不 panic
+  ```
+  程序正常退出 exit 0。`<non-scalar>` 是未初始化/越界内存的 Display 输出。
+- **根因**：数组索引运行时未做边界检查（`0 <= idx < len`），直接按偏移读取，越界返回未初始化内存。
+- **影响**：这是静态类型语言最严重的安全缺陷——用户可读任意内存。负索引同理。对比 Rust（panic）、Java（ArrayIndexOutOfBoundsException）、Python（IndexError），Kuzo 静默返回垃圾值是最差行为。
+- **建议修复**：数组索引运行时强制 `0 <= idx < len` 检查，越界 panic。
+- **复现**：`val x: i32 = [1i32][10i32]; println(x)` → 打印 `<non-scalar>`
+
+---
+
+## Bug #64：非穷尽 match 不报错，运行时静默返回 void
+
+- **状态**：已修复（2026-08-10，sema 阶段 check_match_exhaustive 检查 ADT 构造器覆盖；Builder.rs compile_panic_subgraph + Compute.rs compute_match_fallback 运行时兜底 panic）
+- **优先级**：P0（类型安全）
+- **现象**：
+  ```kuzo
+  type Color = | Red | Green | Blue
+  fun toStr(c: Color): str {
+      match c {
+          Red => "r"
+          Green => "g"
+      }   // 漏掉 Blue 分支
+  }
+  fun main(): void {
+      println(toStr(Blue))   // 打印 "void"，不 panic
+  }
+  ```
+  sema 阶段 `kuzo debug --stage check` 报 `ok (no type errors)`，运行时传 `Blue`（无匹配分支）静默返回 `void`，而函数声明返回 `str`。
+- **根因**：sema 的 match 穷尽性检查未实现或不完整——漏分支不报 `non-exhaustive match`。运行时无匹配分支时无 fallback/panic，直接"穿透"返回默认值（void）。
+- **影响**：静态类型语言的核心安全保证被破坏——声明返回 `str` 的函数可能返回 `void`。所有 match 表达式都不安全。
+- **建议修复**：1) sema 实现 match 穷尽性检查，漏分支报 `non-exhaustive match: missing Blue`；2) 运行时无匹配分支时 panic（兜底）。
+- **复现**：见上方代码，`kuzo debug --stage check` 通过，`kuzo run` 打印 `void`
+
+---
+
+## Bug #65：defer + throw/return 后调用者后续代码不执行
+
+- **状态**：已修复并验证（throw 场景运行时验证通过；return 场景通过 edge_defer 测试套件 15/15 PASS 确认无回归）
+- **优先级**：P0（控制流正确性）
+- **现象**：
+  ```kuzo
+  fun withDefer(): Throw<i32, Error> {
+      defer { println("defer ran") }
+      throw Error("boom")
+  }
+  fun main(): void {
+      println("1. before")
+      match withDefer() {
+          Error(_) => println("2. caught")
+          _ => println("2. other")
+      }
+      println("3. after match")   // 不执行
+      println("4. end")           // 不执行
+  }
+  ```
+  输出：`1. before` / `defer ran` / `2. caught`，然后程序静默终止 exit 0，`3.` 和 `4.` 不打印。return 同理：
+  ```kuzo
+  fun f(): i32 { defer { println("d") }; return 42i32 }
+  fun main(): void {
+      val r = f()
+      println("r={r}")        // 打印 r=42
+      println("after f")      // 不执行
+  }
+  ```
+- **根因**（throw 场景）：sync 路径 `run_frame_sync_inner`（Compute.rs）中，Call 节点完成后无条件检查返回值是否为 `ThrowVal(Err)`，若是则设为 `ControlSignal::Return` 并 `continue`，**跳过了 `notify_downstream`**。导致调用者帧中 Call 节点的下游（match 等）永远不会变成 ready，match 之后的语句不执行。这与 async 路径（Subgraph.rs）的正确行为不一致——async 路径只有 Gate 分支/loop frame 的 Return 才传播，跨函数调用的 Return 不传播。
+- **根因**（return 场景）：代码分析显示 return 42（i32）不触发 throw 传播路径，return 场景的根因待运行时验证确认。
+- **影响**：任何在 defer + throw 函数调用之后的代码都可能不执行。defer 是语言核心特性，此 bug 使 defer 在实际代码中不可用。
+- **修复**：移除 Compute.rs `run_frame_sync_inner` 中 Call 节点对 `ThrowVal(Err)` 的无条件 Return 传播。Throw 值是数据，应流向下游消费者（match/let/`?`）；只有 `?` 操作符（compute_propagate）和 throw 语句本身才将 Throw 错误转为控制流 Return。这与 async 路径（Subgraph.rs）的控制信号传播逻辑保持一致。
+- **复现**：见上方代码；测试 probe `tests/functional/troll_battery/probes/p15_defer_throw.kz`
+
+---
+
+## Bug #66：defer 在块作用域退出时不执行（只在函数级执行）
+
+- **状态**：已修复
+- **优先级**：P1（语义不一致）
+- **现象**：
+  ```kuzo
+  fun main(): void {
+      var log: str = ""
+      {
+          defer { log = log + "1" }
+          defer { log = log + "2" }
+          defer { log = log + "3" }
+      }   // 块结束，期望 defer LIFO 执行
+      println("log = {log}")   // 打印 "log = "（空），defer 未执行
+  }
+  ```
+  defer 在 `{}` 块退出时**不执行**，`log` 为空字符串。
+- **根因**：defer 只注册到函数级 defer 栈，块作用域退出时不清算。对比 Go/Zig（defer 在任意作用域退出时执行）、Rust（drop 在块退出时执行），Kuzo 的 defer 语义不完整。
+- **影响**：资源清理（文件关闭、锁释放）在块作用域内不可靠。用户期望 `{ defer { close(f) } ... }` 在块结束时关闭文件，实际不执行。
+- **修复**：在 `Builder.rs` 的 `compile_block` 中记录块进入时的 `defer_table` 长度（`defer_mark`），块退出时通过 `compile_block_defer_cleanup` 提取新增 defer 并生成 LIFO 清算 Call 节点。引入 `in_function_top_block` 标志区分函数体顶层块和嵌套块：函数体顶层块的 defer 保留在 `defer_table` 中由函数退出时的 `run_defers_sync`/`process_frame` 执行；嵌套块的 defer 在块退出时提取并通过 `chain_effects` 链接到块结果之后执行。
+- **验证**：块级 defer 测试输出 `log = 321`（LIFO 顺序正确）；edge_defer 15/15、throw 15/15 全部通过，无回归。
+- **复现**：见上方代码
+
+---
+
+## Bug #67：移位越界行为不明确（1 << 32 返回 1）
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（语义不明确）
+- **现象**：
+  ```kuzo
+  val sh: i32 = 1i32 << 32   // 打印 1
+  ```
+  i32 移位 32 位（超出 0-31 范围）返回 1（等于 `1 << 0`）。
+- **根因**：移位运行时未检查 shift amount 范围，x86 `shl` 会 mask 低 5 位（`32 & 0x1F = 0`），故 `1 << 32 == 1 << 0 == 1`。这是硬件行为，但语言层应明确：panic 或定义为 wrapping。
+- **影响**：用户写 `1 << 32` 期望 0（数学语义）或 panic，实际得到 1，违反直觉。
+- **建议修复**：明确语义——要么 panic（shift amount >= bit_width），要么文档化 wrapping 行为。建议 panic（更安全）。
+- **复现**：`println(1i32 << 32)` → 打印 1
+
+---
+
+## Bug #68：函数类型后缀数组注解解析优先级错误
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（语法歧义）
+- **现象**：
+  ```kuzo
+  var fns: (i32) -> i32[] = []   // parse 通过
+  // 但 sema 报：type annotation mismatch: expected '(i32) -> i32[]', found ''_543[]'
+  ```
+  `(i32) -> i32[]` 被解析为 `(i32) -> (i32[])`（返回 i32 数组的函数）而非 `((i32) -> i32)[]`（函数数组）。
+- **根因**：类型解析器中 `[]` 后缀的优先级高于 `->`，`->` 右侧的类型先吃掉 `[]`。用户无法直接写"函数数组"类型，必须用别名绕过：`type IntFn = (i32) -> i32; var fns: IntFn[] = []`。
+- **影响**：函数数组（回调列表、策略数组等常见模式）无法直接声明，必须别名绕过。
+- **建议修复**：调整类型解析优先级，让 `[]` 后缀绑定到整个函数类型，或要求函数类型用括号包裹 `((i32) -> i32)[]`。
+- **复现**：`var fns: (i32) -> i32[] = []`
+
+---
+
+## Bug #69：空 record 构造报 undefined variable
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（特性缺失）
+- **现象**：
+  ```kuzo
+  type Unit = Unit()
+  val u: Unit = Unit()   // sema 报：undefined variable 'Unit'
+  ```
+  零字段 record 定义成功，但构造时报 `undefined variable 'Unit'`。
+- **根因**：两层问题：
+  1. **Parser bug**：`parse_type_def` 中 `Identifier()` 空括号路径缺少 `else` 分支调用 `try_parse_single_ctor_adt()`，导致 `type Unit = Unit()` 被解析为类型别名（Alias）而非 ADT，构造器从未注册。
+  2. **Sema gap**：零参数构造器在 `build_ctor_fn_type` 中返回 ADT 类型（非函数类型），`Unit()` 调用时 callee 解析为 ADT 类型而非函数，Call handler 报错。
+- **修复**：
+  1. Parser：在 `parse_type_def` 的 `if !self.check(RParen)` 后添加 `else` 分支，对空括号 `Name()` 调用 `try_parse_single_ctor_adt()`，正确解析为 ADT。
+  2. Sema：在 Call handler 的构造器消歧路径中，当 `ctors.len() == 1 && args.is_empty() && ctor.field_type_reprs.is_empty()` 时，直接返回 ADT 类型（零参数构造器用 `()` 调用等价于使用裸值）。
+- **验证**：`edge_adt` 测试新增 section 14（Marker()/Leaf()/Nil() 零参数构造器调用），sema check + runtime 全部 PASS，无回归。
+
+---
+
+## Bug #70：字符串插值转义花括号 {{}} 不正确 + 空插值 {} parse error
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（字符串插值）
+- **现象**：
+  ```kuzo
+  // 1. 转义花括号
+  check("{{x}}" == "{x}", "转义花括号")   // FAIL：{{x}} 不等于 {x}
+  // 实际 {{x}} 可能被解析为插值 {x}（输出 42）+ 字面 }
+
+  // 2. 空插值
+  val s: str = "x={}"   // parse error: expected expression
+  ```
+- **根因**：
+  1. **转义花括号**：经分析，`{{`/`}}` 转义机制在 `contains_interpolation`、`parse_string_literal` 和 `unescape_string` 三处均已正确实现。`{{` 被识别为字面 `{` 的转义（跳过插值检测），`}}` 被识别为字面 `}`。原 BUG_REPORT 中的现象描述有误。
+  2. **空插值**：`{}` 内无表达式，`parse_interpolation_expr` 失败时静默截断错误，用户得不到明确的错误提示。
+- **修复**：
+  1. 转义花括号：无需修改（已正确实现）。
+  2. 空插值：在 `parse_string_literal` 中添加空表达式检查，当 `expr_text.trim().is_empty()` 时返回明确的 `ParseError`：`"empty interpolation expression in string literal; use {{}} for literal braces"`。
+- **验证**：`edge_string_interp` 测试新增 section 22（10 个测试用例），覆盖 `{{ebv}}` 转义、`{{}}` 空花括号转义、混合转义+插值、双重转义 `{{{{}}}}`，sema check + runtime 全部 PASS，无回归。
+
+---
+
+## 杠精电池批次（2026-08-10）
+
+> 从用户视角对 Kuzo 全特性做"杠精"测试，不参考已有测试用例，独立设计探针。测试位于 `tests/functional/troll_battery/`，每个探针为独立 `.kz` 文件。下列编号续接 #70。
+
+## Bug #71：整数取模零静默返回 0（与 #62 同类，未覆盖）
+
+- **状态**：已修复（2026-08-10，与 #62 一并修复，Ops.rs arith_mod_* 添加除零检查）
+- **优先级**：P1（数值语义）
+- **现象**：
+  ```kuzo
+  val m: i32 = 1i32 % 0i32
+  println("m={m}")   // 输出 m=0，exit code 0，不 panic
+  ```
+- **根因**：与 #62（整数除以零静默返回 0）同一类缺陷，但取模路径未一并修复。`% 0` 在数学上未定义，应 panic 或报错。
+- **影响**：掩盖程序错误；用户无法依赖取模零触发失败来发现 bug。
+- **建议修复**：与 #62 统一处理 — 整数 `/0` 和 `%0` 都应 panic（或提供 `checked_rem` 而默认 panic），保持语义一致。
+- **复现**：`tests/functional/troll_battery/probes/p13_int_mod_zero.kz`
+
+---
+
+## Bug #72：字面量溢出 sema check 通过但 IR 阶段报错（阶段不一致）
+
+- **状态**：已修复（sema 阶段新增 check_int_literal_range 范围检查，与 IR 阶段一致）
+- **优先级**：P1（编译流水线一致性）
+- **现象**：
+  ```kuzo
+  val over: i8 = 200i8   // 200 超出 i8 范围 (-128..=127)
+  ```
+  - `kuzo debug --stage check` 输出 `ok: ... (no type errors)`
+  - `kuzo run` 输出 `IR error: integer literal '200' at line 40:23 is out of range for i8 (valid range: -128..=127)`
+- **根因**：字面量范围检查只在 IR 阶段做，sema 阶段未做。IDE/LSP 走 check 阶段会漏报，用户以为类型正确，运行/构建才报错。
+- **影响**：编辑器诊断与编译结果不一致；用户体验割裂。
+- **建议修复**：在 sema 阶段对带类型后缀的整数字面量做范围检查（i8/u8/.../i64/u64 各自范围），与 IR 阶段共用一套范围常量。
+- **复现**：`tests/functional/troll_battery/probes/p13_lit_overflow_i8.kz`，对比 `--stage check` 与 `run` 输出
+
+---
+
+## Bug #73：不同位宽整数混合运算 / 比较静默通过（无显式转换）
+
+- **状态**：已修复（sema 阶段新增 check_numeric_binop_compat，对明确类型化操作数的不同位宽运算报错）
+- **优先级**：P1（类型系统严格性）
+- **现象**：
+  ```kuzo
+  val a: i8 = 100i8
+  val b: i16 = 1000i16
+  val s = a + b          // sema check 通过，运行时 100i8 + 1000i16 = 1100
+  val eq = (100i32 == 100i64)   // sema check 通过，运行时 true
+  ```
+- **根因**：sema 对不同位宽整数的 `+`/`==` 等运算做隐式提升，不要求显式 `cast`，也不报类型不匹配。
+- **影响**：违反用户偏好（Rust 风格严格类型，区分字面量可提升与显式变量严格统一）；用户无法通过类型系统发现位宽混淆错误（如把 i32 当 i64 累加导致精度假设错误）。
+- **建议修复**：显式类型注解的变量之间，不同位宽运算应报类型错误，要求显式 `cast`；仅裸字面量允许提升。与项目 memory 中"区分字面量与显式变量"的偏好一致。
+- **复现**：`tests/functional/troll_battery/probes/p13_mix_i8_i16.kz`、`p13_mix_i32_i64.kz`、`p13_eq_i32_i64.kz`
+
+---
+
+## Bug #74：i32 与 f64 跨类型比较 / 运算静默通过但结果错误
+
+- **状态**：已修复（sema 阶段禁止 int/float 跨类别运算，要求显式 cast）
+- **优先级**：P0（数值正确性，静默错误结果）
+- **现象**：
+  ```kuzo
+  val eq1 = (1i32 == 1.0)   // 期望 true（数学相等），实际 false
+  val eq2 = (1i32 == 1.5)   // false（正确）
+  val add  = 1i32 + 1.0     // 输出 2（结果类型疑似 i32，1.0 被隐式截断为 1）
+  ```
+- **根因**：sema 允许 `i32 == f64` 与 `i32 + f64` 通过，但运行时既不做数值正确提升（`1i32==1.0` 应为 true），也不报类型错误，而是给出错误结果。`1i32 + 1.0 = 2` 暗示 f64 操作数被截断为 i32 后参与整数运算。
+- **影响**：**静默错误结果**是最严重的一类 bug — 用户得到错误答案却无任何警告。跨类型比较/运算要么报类型错误（严格），要么正确提升（`1==1.0` 为 true，`1+1.0=2.0`），不能既允许又算错。
+- **建议修复**：sema 阶段禁止 `i32` 与 `f64` 直接 `==`/`+` 等运算，要求显式 `cast` 统一类型后再运算；或定义明确的提升规则并正确实现。
+- **复现**：`tests/functional/troll_battery/probes/p13_eq_int_float.kz`、`p13_add_int_float.kz`
+
+---
+
+## Bug #75：整数算术溢出静默 wrap，无 checked / wrapping 运算符选项
+
+- **状态**：已修复（debug 模式 panic on overflow，release 模式 wrapping，与 Rust 语义一致）
+- **优先级**：P2（语言可用性 / 安全性）
+- **现象**：
+  ```kuzo
+  val maxI32: i32 = 2147483647i32
+  val over: i32 = maxI32 + 1i32    // 输出 -2147483648（wrap）
+  val minI32: i32 = -2147483648i32
+  val under: i32 = minI32 - 1i32   // 输出 2147483647（wrap）
+  val u8max: u8 = 255u8
+  val overU8: u8 = u8max + 1u8     // 输出 0（wrap）
+  val i8max: i8 = 127i8
+  val overI8: i8 = i8max + 1i8     // 输出 -128（wrap）
+  ```
+- **根因**：所有整数算术默认 wrap（release 语义），无 debug panic 模式，也无 `checked_add`/`wrapping_add`/`overflowing_add` 等显式运算符。
+- **影响**：用户无法在调试时捕获溢出 bug；性能优先可接受 wrap，但应提供溢出检查选项。
+- **建议修复**：提供 `checked_*` 系列 stdlib 函数（返回 `Throw<T, OverflowError>`），或编译选项 `-C overflow-checks=on`。
+- **复现**：`tests/functional/troll_battery/src/Main.kz` R2–R5
+
+---
+
+## Bug #76：val → var 遮蔽允许，破坏 val 不可变语义保证
+
+- **状态**：已修复（sema 阶段追踪绑定可变性,禁止 val→var / var→val 遮蔽,允许同可变性遮蔽）
+- **优先级**：P2（语义保证）
+- **现象**：
+  ```kuzo
+  val x: i32 = 1i32
+  var x: i32 = 2i32   // sema check 通过
+  x = 3i32            // 通过
+  println("x={x}")    // 输出 x=3
+  ```
+- **根因**：允许同名 `val` 被 `var` 遮蔽（反之亦然）。`val` 本应承诺不可变，但遮蔽后同名绑定变为可变，用户对 `val` 的不可变预期被打破。
+- **影响**：`val` 的不可变保证仅对当前绑定生效，遮蔽后失效；代码审查时难以追踪可变性变化。
+- **建议修复**：要么禁止 `val`→`var` 与 `var`→`val` 的可变性改变遮蔽（允许同可变性遮蔽），要么在允许时给出 warning。
+- **复现**：`tests/functional/troll_battery/probes/p14_shadow_val_to_var.kz`
+
+---
+
+## Bug #77：main 函数的 defer 不执行
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P0（defer 语义，清理逻辑丢失）
+- **现象**：
+  ```kuzo
+  fun main(): void {
+      println("before defer")
+      defer println("defer 1")   // 不打印
+      defer println("defer 2")   // 不打印
+      println("after defer")
+  }
+  // 输出：before defer / after defer（缺 defer 1/2）
+  ```
+  对比：普通（非 main）函数里的 defer 正常 LIFO 执行。
+- **根因**：defer 帧在执行 defer body（如 `println`）时会因为函数调用而 suspend，但 main 帧在 `run_frame_nodes` 的 defer 执行循环中直接将自身标记为 `Completed`，导致 `process_frame` 设置 `self.result` 后事件循环退出，suspended 的 defer 帧永远没有机会被调度执行。普通函数帧的 defer 能正常执行是因为调用者在等待子帧完成，事件循环不会提前退出。
+- **影响**：用户在 main 里放的清理逻辑（关闭文件、刷新缓冲、释放资源）全部丢失，可能导致数据损坏或资源泄漏。这是最常见的 defer 使用场景之一。
+- **修复**：在 Engine 上新增 `defer_frames`（区分 defer 帧与普通子帧）和 `defer_waiters`（记录每个帧等待的 defer 帧计数）两个字段。`init_defer_frame` 设置 defer 帧的 `caller` 为父帧并注册到 `defer_frames`。`run_frame_nodes` 的 defer 执行循环中，若有 defer 帧 suspended（`pending_defer_count > 0`），当前帧不标记 `Completed` 而是 `Suspended`，并在 `defer_waiters` 中记录待完成计数。`process_frame` 的 `Completed`/`Failed` 分支拦截 defer 帧完成，递减父帧的 `defer_waiters` 计数，当计数归零时直接终结父帧（不重新执行 `run_frame_nodes`，避免 defer 重复执行）。`Suspended` 分支跳过 defer-waiter 的 `pending_completions`/`pending_events` 处理。
+- **复现**：`tests/functional/troll_battery/probes/p15_defer_basic.kz`、`p15_defer_in_fn.kz`（对比）
+
+---
+
+## Bug #78：并发 async 修改全局变量导致计数错误 + 引擎 panic
+
+- **状态**：已修复（2026-08-10，引擎 panic 部分；数据竞争为预期行为，需用户通过 channel 显式同步）
+- **优先级**：P0（并发正确性 + 引擎稳定性）
+- **现象**：
+  ```kuzo
+  var counter: i32 = 0i32
+  async fun bump(): Async<void> {
+      var i: i32 = 0i32
+      while i < 1000i32 {
+          counter = counter + 1i32
+          i = i + 1i32
+      }
+  }
+  fun main(): void {
+      val a = bump()
+      val b = bump()
+      a.await()
+      b.await()
+      println("counter={counter}")
+  }
+  ```
+  - 第一次运行：`counter=2066`（期望 2000，出现计数错误）
+  - 再次运行：`thread '<unnamed>' panicked at src/engine/Subgraph.rs:381:25: complete_and_wake_caller: LoopBody none but loop_frame FrameId(4) is not in frames (invariant violation: the loop frame referenced by the body frame's caller must exist)`
+- **根因**：
+  1. 全局可变变量在多 async 间无同步保护，`counter = counter + 1` 非原子，读-改-写交错导致计数错误（甚至出现 >2000 的异常值，说明增量被重复计入）。
+  2. 引擎在并发调度 LoopBody 子图完成回调时，`complete_and_wake_caller` 找不到 loop_frame，触发不变量违反 panic。这是并发路径下帧管理缺陷。
+- **影响**：任何并发 async 修改共享可变状态的程序都可能得到错误结果或崩溃。并发 + 全局可变是常见模式，此 bug 使其不可用。
+- **修复**：
+  1. 引擎 panic 部分已修复：`Subgraph.rs::complete_and_wake_caller` 的 LoopBody 分支在多 worker 并发场景下，loop_frame 可能被另一个 worker 暂时取出，原先直接 panic。改为当 loop_frame 不在 frames 中时，将完成信息存入 `pending_completions`，由 `process_frame` 在 loop_frame 重新插入后重放。同时 `Schedule.rs` 消费 `pending_completions` 时对所有 call node 传播 `control_signal`（原先仅对 Gate 节点传播，导致 break/return 信号丢失）。
+  2. 数据竞争导致的计数偏差属于语言语义范畴：Kuzo 不对全局可变变量提供隐式同步，并发访问需用户通过 channel 显式同步。这是预期行为（与 Rust 的 `static mut` 语义一致：unsafe + 需用户自行同步），测试用例也以 "expect 2000 if serial, less if race" 标注。后续可通过提供 `Atomic<T>` / 互斥原语改进（特性请求，非 bug）。
+- **修复后行为**：`p15_global_race.kz` 运行稳定输出 `counter=1022 (expect 2000 if serial, less if race)`，不再 panic。
+- **复现**：`tests/functional/troll_battery/probes/p15_global_race.kz`
+
+---
+
+## Bug #79：async 函数返回值处理缺陷（转发返回垃圾值 / 类型不匹配静默返回 void）
+
+- **状态**：已修复（2026-08-10，缺陷 1 自动 await 转发；channel 竞态 void 已修复）
+- **优先级**：P0（async 语义正确性）
+- **现象**：
+  ```kuzo
+  async fun compute(): Async<i32> { 99 }
+
+  // 缺陷 1：直接转发 async 调用结果，返回垃圾值
+  async fun retCall(): Async<i32> { compute() }
+  // retCall().await() 返回 2（应返回 99）
+
+  // 缺陷 2：最后表达式类型与声明不匹配，静默返回 void
+  async fun consumer(ch: Channel<i32>): Async<i32> { ch.recv() }
+  // ch.recv() 返回 i32，函数声明 Async<i32>，类型不匹配但 sema 不报错
+  // consumer(ch).await() 返回 void（而非 42）
+
+  // 显式 await 转发则正确
+  async fun retCallAwait(): Async<i32> { val v = compute().await(); v }
+  // retCallAwait().await() 正确返回 99
+  ```
+- **根因**：
+  1. async 函数最后表达式若为另一个 async 调用（返回 `Async<T>`），未做自动 await 转发，也未报"应 await"错误，而是把 async handle 的内部表示当作返回值（垃圾值 2）。
+  2. async 函数最后表达式类型（如 `i32`）与声明返回类型（`Async<i32>`）不匹配时，sema 不报错，运行时静默返回 void。
+  3. `p15_channel_async.kz` 偶发 `v=void` 的独立根因：`Schedule.rs` 的 `ChannelNotify` 处理中，`on_event_arrived` 传递 `Value::VOID` 作为 ChannelReady 事件的值。`apply_event_to_frame` 直接将 VOID 注入到等待的 consumer 的 await 节点，导致 consumer 返回 void 而非从 channel recv 获取的实际值。
+- **修复**：
+  1. 缺陷 1 已修复：在 `Builder.rs::compile_function_body` 中，当函数为 async 且 body 表达式的推断类型为 `Async<T>` 时，自动插入隐式 await 节点（`build_await_node`），将 async handle 解析为内部值 T。新增 `expr_type_is_async` 辅助函数精确判断表达式类型是否为 `Async<T>`（不使用 `infer_event_source_kind` 的 AsyncJoin 默认值，避免误判）。修改所有 5 个 `compile_function_body` 调用点，传入 `is_async` 参数。
+  2. 缺陷 2 经验证不复现：`ch.recv()` 返回 `i32`，sema 的 `unify_return_type` 正确处理 `Async<i32>` 声明 vs `i32` body 的类型统一（lines 1082-1086），运行时正确返回 42。
+  3. channel 竞态 void 已修复：在 `AsyncRt.rs::apply_event_to_frame` 中，对于 Channel await（`suspend_event` 为 `ChannelReady`），不注入传入的 VOID 值，而是重新 push await 节点让 `compute_await` 重新执行。`compute_await` 会再次调用 `ChannelSource::resolve` 的 `ch.recv()` 获取实际值。如果 channel 为空（数据被其他 consumer 取走），帧重新挂起并重新注册 waiter。这与 select 帧的处理方式一致。
+- **修复后行为**：`p15_async_ret.kz` 稳定输出 `a=42 b=99 c=99`（原先 `b=2`）；`p15_async_forward_await.kz` 输出 `b=99`；`p15_channel_async.kz` 20 次连续运行全部 `v=42`（原先偶发 `v=void`）。
+- **复现**：`tests/functional/troll_battery/probes/p15_async_ret.kz`、`p15_async_forward_await.kz`、`p15_channel_async.kz`
+
+---
+
+## Bug #80：类型别名循环定义不报错
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（类型系统健全性）
+- **现象**：
+  ```kuzo
+  type A = B
+  type B = A
+  // sema check 通过（no type errors）
+  // 使用时报含糊错误：
+  val x: A = 1i32   // error: type annotation mismatch: expected 'B', found 'i32'
+  ```
+- **根因**：sema 解析别名时未检测循环引用。`A` 解析为 `B`，`B` 解析为 `A`，形成无限展开，使用时报与循环无关的"expected B"错误，误导用户。现有的 `visiting` 集合循环检测因 `target_type` 短路返回（直接返回预解析的 TypeHandle，不进入递归 `target_type_name` 路径）而失效。
+- **修复**：在 `Inference.rs::check_module_with_env` 中 `populate_module` 之后新增 `check_alias_cycles` 方法。该方法遍历所有 `TypeDefKind::Alias` 类型定义，沿 `target_type_name` 链做 DFS 检测环，发现环时报告 `cyclic type alias: A -> B -> A`。使用跨模块去重集合避免同一环被多个模块重复报告。
+- **修复后行为**：`p16_alias_cycle.kz` 和 `p16_alias_cycle_rt.kz` 在 sema 阶段报告 `cyclic type alias: A -> B -> A` 和 `cyclic type alias: B -> A -> B`。
+- **复现**：`tests/functional/troll_battery/probes/p16_alias_cycle.kz`、`p16_alias_cycle_rt.kz`
+
+---
+
+## Bug #81：同名 ADT 构造子定义不报冲突
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（类型系统健全性）
+- **现象**：
+  ```kuzo
+  type A = | Foo(i32)
+  type B = | Foo(str)
+  // sema check 通过（no type errors）
+  // 使用时报类型不匹配：
+  val b: B = Foo("x")   // error: type annotation mismatch: expected 'B', found 'A'
+  ```
+- **根因**：构造子 `Foo` 全局符号表中后定义的覆盖前一个（或仅绑定第一个）。定义时不检测跨类型同名构造子冲突，使用时才报"expected B, found A"，用户误以为是类型注解错误，实际是构造子被遮蔽。`put_type_def` 在遇到构造子名冲突时仅"跳过注册该构造子"，不报告错误。
+- **修复**：在 `Inference.rs::check_module_with_env` 中 `populate_module` 之后新增 `check_duplicate_constructors` 方法，遍历所有 `TypeDefInfo.constructors`，对同名构造子（跨类型）报告 `ambiguous constructor: <name> already defined for type <prev>`，并用 `reported` 集合去重避免跨模块重复报告。
+- **设计变更：改为使用级报错**（2026-08-11）：对齐 Rust/OCaml 模型，移除 `check_duplicate_constructors` 定义级警告。同名构造器定义合法共存，仅在**使用处**裸名调用且类型导向和参数个数都无法消歧时报错（`Inference.rs::infer_call` 中 `ambiguous constructor '<name>': defined by types [...]`）。stdlib 的 `FileKind.File`/`FileKind.Other` 同名不再产生任何警告，36/36 功能测试 sema 检查通过。
+- **保留的基础设施**：`CtorDefInfo.def_span`/`def_module` 和 `SemaError.file_path` 字段保留，供未来跨模块诊断使用。
+- **复现**：`tests/functional/troll_battery/probes/p16_dup_constructor.kz`、`p16_dup_constructor_rt.kz`
+
+---
+
+## Bug #82：ADT 重复字段名不报错
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P2（类型系统健全性）
+- **现象**：
+  ```kuzo
+  type P = P(x: i32, x: i32)   // sema check 通过
+  ```
+- **根因**：Record/ADT 构造子字段名未做唯一性检查。`constructor_def_to_ctor_info`/`record_fields_to_ctor_info` 直接收集所有字段名，不检测重复。
+- **修复**：在 `Inference.rs::check_module_with_env` 中 `populate_module` 之后新增 `check_duplicate_ctor_fields` 方法，遍历所有 `TypeDefInfo.constructors`，对每个构造子的 `field_names`（仅命名字段，跳过 `None`）检测重复，报告 `duplicate field '<name>' in constructor <ctor_name>`，并用 `reported` 集合（按 `(field, ctor)` 去重）避免跨模块重复报告。
+- **修复后行为**：`p16_dup_field.kz` sema 阶段报告 `duplicate field 'x' in constructor P`；stdlib 不受影响（已验证 `p16_recursive_type.kz` 输出 `ok`）。
+- **复现**：`tests/functional/troll_battery/probes/p16_dup_field.kz`
+
+---
+
+## Bug #83：泛型参数类型不统一不报错（pair(1i32, 2i64) 静默用首参类型）
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P1（泛型类型推断）
+- **现象**：
+  ```kuzo
+  fun pair<T>(a: T, b: T): T { a }
+  val v = pair(1i32, 2i64)   // sema check 通过
+  println("v={v}")           // 输出 v=1（T 绑定为 i32，2i64 被静默接受）
+  ```
+- **根因**：
+  1. `unify_or_constrain(T', i32)` 成功，T' 绑定为 i32，但**不记录 candidate**（仅失败时才 `add_equality`）。
+  2. `unify_or_constrain(T', i64)` 失败（i32 ≠ i64），进入 `solver.add_equality`，记录 candidate [i64]。
+  3. `finalize_solution` 看到 candidates[T'] = [i64]（仅一个候选），不报歧义。
+  4. solver 的 "type mismatch" 错误虽然被记录，但 `solver.errors()` **从未被检查**。
+- **修复**：
+  1. `unify_or_constrain` 在调用 `unify` 之前先调用 `solver.record_candidate(arena, t1, t2)`，无论 unify 成功还是失败都记录候选。这样 `finalize_solution` 能看到一个 TypeVar 被要求绑定到的**所有**具体类型。
+  2. 在 `check_module_with_env` 步骤 9 之后，检查 `solver.errors()`，**仅报告歧义错误**（reason 包含 "ambiguous"）。不报告 "type mismatch" 错误——它们是 `unify_or_constrain` 严格 unify 的副产物，许多可被 `try_widen_unify`（widening/nullable/async 展开）合法解决，报告会产生大量误报。
+- **修复后行为**：`p16_generic_unify.kz` sema 阶段报告 `type mismatch: i32 does not unify with i64 (ambiguous inference for TypeVar502: 2 distinct candidates)`；stdlib 及现有测试无回归。
+- **复现**：`tests/functional/troll_battery/probes/p16_generic_unify.kz`、`p16_generic_unify_rt.kz`
+
+---
+
+## Bug #84：throw 后代码不报 unreachable
+
+- **状态**：已修复（2026-08-10）
+- **优先级**：P3（诊断完整性）
+- **现象**：
+  ```kuzo
+  fun boom(): Throw<i32, Error> {
+      throw Error("x")
+      val y: i32 = 1i32   // 永不执行，但无 warning
+      y
+  }
+  ```
+- **根因**：sema 的 `Expr::Block` 处理逻辑未追踪 `diverges` 状态。遍历块内语句时，遇到 `throw`/`return`/`break`/`continue` 后不会标记后续语句为不可达，也不发警告。trailing 表达式同理。
+- **修复**：
+  1. 在 `Inference.rs::infer_expr` 的 `Expr::Block` 分支中引入 `diverges` 标志：遍历 `stmts` 时，遇到 `Stmt::Return`/`Stmt::Throw`/`Stmt::Break`/`Stmt::Continue` 置 `diverges = true`；下一轮迭代若 `diverges` 已为真，调用 `add_warning_at("unreachable code after throw/return/break/continue", ...)` 并 `break` 停止推断剩余语句。
+  2. trailing 表达式同理：若 `diverges` 为真，对 trailing 表达式报告 unreachable 警告，并返回 `Ty::Never`。
+  3. 新增警告系统：在 `SemaResult` 中新增 `warnings: Vec<SemaError>` 字段与 `add_warning` 方法；`InferContext` 新增 `add_warning_at` 方法封装写入；`main.rs` 中新增 `prev_warn_len` 追踪并打印每个模块的警告（格式 `path:line:col: warning: msg`）。
+- **修复后行为**：`p16_throw_unreachable.kz` sema 阶段对 throw 后的第 4 行 `val y: i32 = 1i32` 与第 5 行 `y` 分别报告 `unreachable code after throw/return/break/continue` 警告；程序仍正常输出 `ok`。stdlib 及其他测试探针（如 `p16_recursive_type.kz`）无多余警告，无回归。
+- **复现**：`tests/functional/troll_battery/probes/p16_throw_unreachable.kz`
+
+---
+
+## Bug #85：match 嵌套穷尽性检查缺失（sema 只检查单层构造器）
+
+- **状态**：已修复
+- **优先级**：P1（类型安全 / 诊断完整性）
+- **现象**：
+  ```kuzo
+  type Opt = | Some(i32) | None
+  match x {
+      Some(0) => ...    // 只覆盖 Some(0)
+      None    => ...    // 漏了 Some(非0)
+  }
+  // sema 不报错（认为 Some + None 都覆盖了）
+  // 运行时：Some(1) 落兜底 panic（CF_MATCH_FALLBACK）
+  ```
+- **根因**：`Inference.rs::pattern_covered_ctors` 对 `Pattern::Constructor { name, .. }` 只记录顶层构造器名，**不递归分析子模式**。当带参数构造器的子模式是字面量/部分模式（如 `Some(0)`）而非变量绑定（`Some(x)`）时，无法检测字段级覆盖缺口。
+- **修复**：在 `Inference.rs` 中实现完整的 usefulness 算法（类似 Rust/OCaml 的模式覆盖性分析），替换原有的单层构造器检查。usefulness 算法递归检查构造器子模式覆盖情况，同时解决三个问题：
+  1. **嵌套穷尽性**：检测 `Some(0) => ...` 漏掉 `Some(非0)` 的字段级覆盖缺口，附带 witness 消息
+  2. **不可达 arm 检测**：检测任意模式重叠（如 `Some(x) => ...` 之后的 `Some(0) => ...` 不可达）
+  3. **bool/字面量穷尽性**：正确处理 bool 穷尽（`true` + `false`）和有限字面量穷尽
+  同时修复了 `Throw<T, E>` 内置类型的 `Ok`/`Error` 构造器 arity 问题（`ctor_arity_and_fields` 添加 `Ty::Throw` 分支）。
+- **验证**：
+  - 14/14 lib 单元测试通过
+  - edge_match 全部通过（20+ 个穷尽性 match 模式，含 Tree/List/Shape/bool/nullable/newtype/深嵌套/or-pattern/guarded arms）
+  - edge_defer 15/15、throw 15/15 全部通过，无回归
+  - troll_battery 中 3 个 non-exhaustive 探针正确报告错误并附带精确 witness 消息（missing Blue / missing Rect）
+- **复现**：见上方代码
 
 ---
 

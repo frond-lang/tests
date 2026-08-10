@@ -1,0 +1,6 @@
+// [INTENTIONAL-FAIL] 全局变量使用自身初始化(循环依赖)
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+var a: i32 = a + 1i32
+fun main(): void {
+    println("a={a}")
+}

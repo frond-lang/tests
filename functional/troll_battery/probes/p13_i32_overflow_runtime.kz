@@ -1,0 +1,6 @@
+// i32 运行时溢出:MAX + 1
+fun main(): void {
+    val maxI32: i32 = 2147483647i32
+    val over: i32 = maxI32 + 1i32
+    println("over={over}")
+}

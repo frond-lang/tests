@@ -1,0 +1,7 @@
+// [INTENTIONAL-FAIL] 泛型不统一运行时:pair(1i32, 2i64)
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun pair<T>(a: T, b: T): T { a }
+fun main(): void {
+    val v = pair(1i32, 2i64)
+    println("v={v}")
+}

@@ -1,0 +1,11 @@
+// 负向用例：类型别名在 mismatch 报错中保留别名名（Bug #61 已修复）
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'Mat2D', found 'i64[2][1]'
+//   type annotation mismatch: expected 'I64Arr', found 'i32[2]'
+type Mat2D = i32[][]
+type I64Arr = i64[]
+fun main(): void {
+    val a: Mat2D = [[1i64, 2i64]]
+    val b: I64Arr = [1i32, 2i32]
+    println("skip")
+}

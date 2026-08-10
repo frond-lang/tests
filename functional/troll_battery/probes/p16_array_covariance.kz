@@ -1,0 +1,7 @@
+// [INTENTIONAL-FAIL] 数组协变:i32[] 赋值给 i64[]?
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun main(): void {
+    val arr32: i32[] = [1i32, 2i32, 3i32]
+    val arr64: i64[] = arr32
+    println("ok")
+}

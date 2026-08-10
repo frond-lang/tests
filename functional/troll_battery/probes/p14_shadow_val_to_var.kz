@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] var 遮蔽(同名重新声明,改变可变性)
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun main(): void {
+    val x: i32 = 1i32
+    var x: i32 = 2i32
+    x = 3i32
+    println("x={x}")
+}

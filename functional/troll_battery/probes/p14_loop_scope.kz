@@ -1,0 +1,10 @@
+// 循环变量作用域:循环外是否可见
+fun main(): void {
+    var i: i32 = 0i32
+    while i < 3i32 {
+        val loopLocal: i32 = i * 2i32
+        println("loopLocal={loopLocal}")
+        i = i + 1i32
+    }
+    println("after i={i}")
+}

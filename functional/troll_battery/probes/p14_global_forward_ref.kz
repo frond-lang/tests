@@ -1,0 +1,7 @@
+// [INTENTIONAL-FAIL] 前向引用全局变量(后定义的全局变量被前一个全局初始化使用)
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+val a: i32 = b + 1i32
+val b: i32 = 10i32
+fun main(): void {
+    println("a={a} b={b}")
+}

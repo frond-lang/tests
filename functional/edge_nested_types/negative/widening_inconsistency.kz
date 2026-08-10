@@ -1,0 +1,11 @@
+// 负向用例：方案 A（全严）后 numeric widening 全面禁止
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'i64[]', found 'i32[1]'
+//
+// Bug #60 修复（方案 A 全严）：标量 / 数组 / Throw 之间的 numeric widening
+// 行为已统一为全面禁止。所有 numeric 转换必须显式 cast。
+// 本文件验证数组上下文中 i32→i64 隐式提升被正确拒绝。
+fun main(): void {
+    val b: i64[] = [1i32]
+    println(b[0])
+}

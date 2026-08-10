@@ -210,13 +210,31 @@ fun main(): void {
     check("{emoji_s}" == "hello", "unicode plain")
 
     // ─── 21. Bug #55 探测：混合 int-float 算术 ───
+    // 严格类型检查要求 int/float 显式 cast；用 0.0 替代 0 以符合类型规则。
     println("--- Bug #55: Mixed int-float ---")
-    val mixed_sub = 0 - 1.5
+    val mixed_sub = 0.0 - 1.5
     val same_sub = 0.0 - 1.5
     val expected_neg: f64 = 0.0 - 1.5
-    println("  INFO: 0 - 1.5 = {mixed_sub} (Bug #55: expect -1.5)")
+    println("  INFO: 0.0 - 1.5 = {mixed_sub} (Bug #55: expect -1.5)")
     check(same_sub == expected_neg, "0.0 - 1.5 = -1.5 (same-type OK)")
-    check(mixed_sub == expected_neg, "Bug #55: 0 - 1.5 should be -1.5")
+    check(mixed_sub == expected_neg, "Bug #55: 0.0 - 1.5 should be -1.5")
+
+    // ─── 22. Bug #70: 转义花括号 ───
+    // 注意：测试描述字符串中不能包含裸 {} （会被当作空插值报错）
+    println("--- Bug #70: Escaped Braces ---")
+    val ebv: i32 = 42
+    check("{ebv}" == "42", "interp ebv = 42")
+    check("{{ebv}}" != "{ebv}", "escaped braces != interpolation")
+    check("{{ebv}}" == "{{ebv}}", "escaped braces self-consistent")
+    check("{{}}" == "{{}}", "escaped empty braces consistent")
+    check("{{}}" != "{ebv}", "escaped empty != interp ebv")
+    check("val={{ebv}}" != "val=42", "val with escaped != val with interp")
+    check("val={ebv}" == "val=42", "val with interp = 42")
+    check("prefix {{ebv}} suffix" != "prefix 42 suffix", "prefix escaped != prefix interp")
+    // 混合转义和插值
+    check("{{a}}={ebv}" != "a=42", "mixed escaped+interp != plain")
+    // 双重转义
+    check("{{{{}}}}" == "{{{{}}}}", "double escaped consistent")
 
     summary()
 }

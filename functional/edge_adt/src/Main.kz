@@ -367,5 +367,19 @@ fun main(): void {
     }
     check(all_tree_sum == 28, "all trees sum = 3+7+18")
 
+    // ─── 14. Bug #69: 零参数构造器用 `()` 调用 ───
+    println("--- Zero-arg Constructor Call with () ---")
+    type Marker = Marker()
+    val m: Marker = Marker()
+    check(m == Marker(), "Marker() equality")
+
+    // 零参数构造器混用：有括号和无括号等价
+    val leaf_paren: Tree = Leaf()
+    check(leaf_paren == Leaf, "Leaf() == Leaf")
+
+    val nil_paren: List = Nil()
+    check(nil_paren == Nil, "Nil() == Nil")
+    check(listLen(nil_paren) == 0, "Nil() length 0")
+
     summary()
 }

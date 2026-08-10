@@ -1,0 +1,54 @@
+// p17_atomic_ops.kz — Atomic<T> 的 swap/load/store/compare_exchange 操作验证
+// 验证 atomic 关键字构造的原子容器及其四个 intrinsic 方法能正确工作
+fun main(): void {
+    // 构造 Atomic<i32>
+    val a = atomic(0i32)
+
+    // swap: 返回旧值，设置新值
+    val old = a.swap(42i32)
+    if old != 0i32 {
+        println("FAIL: swap should return old value 0, got " ++ cast(old).to(str))
+        return
+    }
+
+    // load: 读取当前值
+    val cur = a.load()
+    if cur != 42i32 {
+        println("FAIL: load should return 42, got " ++ cast(cur).to(str))
+        return
+    }
+
+    // store: 无返回值，设置新值
+    a.store(100i32)
+    val after_store = a.load()
+    if after_store != 100i32 {
+        println("FAIL: after store(100), load should return 100, got " ++ cast(after_store).to(str))
+        return
+    }
+
+    // compare_exchange 成功：expected 匹配当前值
+    val ok1 = a.compare_exchange(100i32, 200i32)
+    if !ok1 {
+        println("FAIL: compare_exchange(100, 200) should succeed (current=100)")
+        return
+    }
+    val after_cas1 = a.load()
+    if after_cas1 != 200i32 {
+        println("FAIL: after successful compare_exchange, load should return 200, got " ++ cast(after_cas1).to(str))
+        return
+    }
+
+    // compare_exchange 失败：expected 不匹配当前值
+    val ok2 = a.compare_exchange(100i32, 300i32)
+    if ok2 {
+        println("FAIL: compare_exchange(100, 300) should fail (current=200)")
+        return
+    }
+    val after_cas2 = a.load()
+    if after_cas2 != 200i32 {
+        println("FAIL: after failed compare_exchange, value should remain 200, got " ++ cast(after_cas2).to(str))
+        return
+    }
+
+    println("ok")
+}

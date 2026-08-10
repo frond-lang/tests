@@ -60,7 +60,7 @@ fun mapDouble(arr: i32[]): i32[] {
 // 顶层函数：数组反转（用 ++ 重建）
 fun reverseArr(arr: i32[]): i32[] {
     var out: i32[] = []
-    var i: i32 = arr.len() - 1
+    var i: i32 = cast(arr.len()).to(i32) - 1
     while i >= 0 {
         out = out ++ [arr[i]]
         i = i - 1

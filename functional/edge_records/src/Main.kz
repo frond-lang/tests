@@ -207,6 +207,7 @@ fun main(): void {
             Pt(x, y) if x > 0 && y < 0 => "Q4"
             Pt(_, 0) => "x-axis"
             Pt(0, _) => "y-axis"
+            _ => "unknown"
         }
     }
     check(quadrant(Pt(0, 0)) == "origin", "match origin")

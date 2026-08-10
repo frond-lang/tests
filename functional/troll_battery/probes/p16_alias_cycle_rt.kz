@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] 别名循环运行时
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+type A = B
+type B = A
+fun main(): void {
+    val x: A = 1i32
+    println("x={x}")
+}

@@ -1,0 +1,9 @@
+// never 传播:throw 后的代码是否报 unreachable
+fun boom(): Throw<i32, Error> {
+    throw Error("x")
+    val y: i32 = 1i32
+    y
+}
+fun main(): void {
+    println("ok")
+}

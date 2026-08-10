@@ -1,0 +1,6 @@
+// [INTENTIONAL-FAIL] 字面量溢出:i8 = 200
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun main(): void {
+    val over: i8 = 200i8
+    println("over={over}")
+}

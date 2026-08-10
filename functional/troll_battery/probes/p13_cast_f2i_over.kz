@@ -1,0 +1,6 @@
+// f64 越界强转 i32
+fun main(): void {
+    val big: f64 = 1e18
+    val trunc: i32 = cast(big).to(i32)
+    println("trunc={trunc}")
+}

@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] 同名构造子使用级歧义：两个 Foo 都接受 1 个参数，
+// 裸名调用且无类型注解提供类型导向消歧 → 使用级报错（对齐 Rust/OCaml 模型）
+type A = | Foo(i32)
+type B = | Foo(i32)
+fun main(): void {
+    val a = Foo(1i32)
+    println("a made")
+}

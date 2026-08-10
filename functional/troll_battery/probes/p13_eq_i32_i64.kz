@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] i32 与 i64 比较(不同位宽比较)
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun main(): void {
+    val a: i32 = 1i32
+    val b: i64 = 1i64
+    val eq = a == b
+    println("eq={eq}")
+}

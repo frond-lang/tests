@@ -1,0 +1,11 @@
+// 负向用例：nullable 数组元素类型不匹配
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'i64[]?', found 'i32[2]'
+//
+// 说明：注解 i64[]?（nullable 数组）与值 [1i32,2i32]（推断为 i32[2]）
+//   nullable 层 unify 内部数组 i64[] vs i32[2]，递归到元素 i64 vs i32 失败。
+//   found 侧不显示 `?` 因值非 nullable（nullable 仅注解侧）。
+fun main(): void {
+    val n: i64[]? = [1i32, 2i32]
+    println("skip")
+}

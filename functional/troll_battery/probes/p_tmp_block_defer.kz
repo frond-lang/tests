@@ -1,0 +1,9 @@
+fun main(): void {
+    var log: str = ""
+    {
+        defer { log = log + "1" }
+        defer { log = log + "2" }
+        defer { log = log + "3" }
+    }
+    println("log = {log}")
+}

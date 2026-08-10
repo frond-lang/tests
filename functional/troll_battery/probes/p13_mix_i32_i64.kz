@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] 故意触发 bug/限制
+// sema/parser 报错是预期行为，非回归
+fun main(): void {
+    val a: i32 = 100i32
+    val b: i64 = 1000i64
+    val s = a + b
+    println("s={s}")
+}

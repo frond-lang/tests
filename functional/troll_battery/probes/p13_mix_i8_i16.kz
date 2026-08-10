@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] 探针:不同位宽整数相加,期望编译错误
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun main(): void {
+    val a: i8 = 100i8
+    val b: i16 = 1000i16
+    val s = a + b
+    println("s={s}")
+}

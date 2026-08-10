@@ -1,0 +1,5 @@
+// 二进制字面量
+fun main(): void {
+    val bin: i32 = 0b1010i32
+    println("bin={bin}")
+}

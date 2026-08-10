@@ -1,0 +1,8 @@
+// ADT 构造子同名(不同类型同名构造子)
+// 设计决定（对齐 Rust/OCaml 模型）：同名构造器允许共存，定义级不警告，
+// 仅在使用处裸名调用且无法消歧时报错（见 p16_dup_constructor_rt.kz）
+type A = | Foo(i32)
+type B = | Foo(str)
+fun main(): void {
+    println("ok")
+}

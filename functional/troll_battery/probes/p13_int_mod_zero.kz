@@ -1,0 +1,5 @@
+// 整数取模零
+fun main(): void {
+    val m: i32 = 1i32 % 0i32
+    println("m={m}")
+}

@@ -1,0 +1,14 @@
+// 负向用例：数组 of Throw 元素类型不匹配
+// 期望（kuzo debug --stage check，exit 1）：
+//   type annotation mismatch: expected 'Throw<i64, Error>[]', found 'Throw<i32, '_>[1]'
+//
+// 说明：注解 Throw<i64, Error>[] 与值 [Ok(1i32)]（推断为 Throw<i32, '_>[1]）
+//   数组层走 strict unify（Arena.unify 的 Array 分支递归 unify 元素），
+//   Throw 元素递归 unify value_type i64 vs i32 —— strict unify 不做 numeric widening，失败；
+//   try_widen_unify 的 match 无 Array 分支，直接 fallback 到 TypeMismatch。
+//   故即便元素是 Throw 包裹的 numeric，数组层也不 widening（与裸数组行为一致）。
+//   Bug #58 已修复：未解析 type var 显示为 '_ 而非 '_NNN。
+fun main(): void {
+    val arr: Throw<i64, Error>[] = [Ok(1i32)]
+    println(arr.len())
+}

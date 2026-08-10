@@ -1,0 +1,14 @@
+// async 转发:显式 await
+async fun compute(): Async<i32> {
+    99
+}
+
+async fun retCallAwait(): Async<i32> {
+    val v = compute().await()
+    v
+}
+
+fun main(): void {
+    val b = retCallAwait().await()
+    println("b={b}")
+}

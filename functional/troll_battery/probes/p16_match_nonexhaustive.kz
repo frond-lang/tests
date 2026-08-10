@@ -1,0 +1,11 @@
+// match 穷尽性:漏掉一个分支
+type Color = | Red | Green | Blue
+fun name(c: Color): str {
+    match c {
+        Red => "r"
+        Green => "g"
+    }
+}
+fun main(): void {
+    println(name(Red))
+}

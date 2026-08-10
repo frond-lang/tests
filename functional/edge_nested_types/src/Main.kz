@@ -1,0 +1,99 @@
+// 杠精批次12：字符串深水
+var failures: i32 = 0
+fun check(cond: bool, name: str): void {
+    if cond { println("OK: {name}") } else { failures = failures + 1; println("FAIL: {name}") }
+}
+
+fun main(): void {
+    // 12.1 ASCII 基本长度
+    check("hello".len() == 5i32, "ASCII len=5")
+
+    // 12.2 中文字符（UTF-8 多字节）
+    val cn: str = "你好"
+    println("  '你好' len = {cn.len()}")  // 2（字符）还是 6（字节）？
+
+    // 12.3 emoji
+    val emoji: str = "😀"
+    println("  '😀' len = {emoji.len()}")  // 1 还是 4？
+
+    // 12.4 混合字符串长度
+    val mixed: str = "a你b😀"
+    println("  'a你b😀' len = {mixed.len()}")
+
+    // 12.5 空字符串
+    check("".len() == 0i32, "空串 len=0")
+
+    // 12.6 字符串拼接性能（大量拼接）
+    var s: str = ""
+    var i: i32 = 0i32
+    while i < 100i32 {
+        s = s + "x"
+        i = i + 1i32
+    }
+    check(s.len() == 100i32, "拼接100次 len=100")
+
+    // 12.7 转义序列完整性
+    println("  \\n = '\\n'")
+    println("  \\t = '\\t'")
+    println("  \\\\ = '\\\\'")
+    println("  \\\" = '\\\"'")
+    println("  \\0 = '\\0'")  // null 字符
+    // \\xNN \\uNNNN
+    // val hex: str = "\x41"  // 'A'?
+    // val uni: str = "\u4e2d"  // '中'?
+
+    // 12.8 字符串相等
+    check("abc" == "abc", "字符串相等")
+    check("abc" != "abd", "字符串不等")
+    check("" == "", "空串相等")
+
+    // 12.9 字符串包含字面花括号（非插值）
+    val json: str = "{\"key\": \"value\"}"
+    println("  json = {json}")
+
+    // 12.10 字符串比较大小
+    println("  abc < abd: {\"abc\" < \"abd\"}")
+    println("  abc > aba: {\"abc\" > \"aba\"}")
+
+    // 12.11 字符串索引
+    val str: str = "hello"
+    // val ch = str[0]  // 期望 char 或报错
+    check(true, "字符串索引测试占位")
+
+    // 12.12 字符串切片
+    // val sub: str = str[0:3]  // 期望支持或报错
+
+    // 12.13 字符串字面量跨行（已知：不支持，parse error）
+    // val multi: str = "line1\nline2"
+
+    // 12.14 字符串 ++ 拼接（数组拼接符是否适用字符串）
+    // val cat: str = "a" ++ "b"  // 期望支持或报错
+
+    // 12.15 字符串插值中的转义
+    val x: i32 = 42i32
+    check("val={{x}}".len() > 0i32, "插值转义占位")
+
+    // 12.16 特殊字符在插值中
+    val name: str = "world"
+    check("hello {name}!" == "hello world!", "插值+前后文本")
+
+    // 12.17 长字符串
+    val long: str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    check(long.len() == 100i32, "长字符串 len=100")
+
+    // 12.18 字符串与数字拼接（+ 重载）
+    check("x" + 1i32 == "x1", "str + i32 = str")
+    check(1i32 + "x" == "1x", "i32 + str = str")  // 左操作数是数字？
+    println("  1 + 'x' done")
+
+    // 12.19 字符串与 bool
+    check("flag=" + true == "flag=true", "str + bool")
+    println("  str + bool done")
+
+    // 12.20 字符串与 null
+    val n: i32? = null
+    check("n=" + n == "n=null", "str + null")
+    println("  str + null done")
+
+    println("BATCH12 DONE failures={failures}")
+}

@@ -1,0 +1,15 @@
+// defer 在 async 函数里执行
+var log: str = ""
+
+async fun withDeferAsync(): Async<i32> {
+    log = log + "start "
+    defer log = log + "defer "
+    log = log + "body "
+    42
+}
+
+fun main(): void {
+    val v = withDeferAsync().await()
+    println("v={v}")
+    println("log={log}")
+}

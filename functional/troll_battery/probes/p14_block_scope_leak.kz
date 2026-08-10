@@ -1,0 +1,8 @@
+// [INTENTIONAL-FAIL] 块作用域泄漏:内部声明的变量外部是否可见
+// 故意触发 bug/限制，sema/parser 报错是预期行为，非回归
+fun main(): void {
+    {
+        val inner: i32 = 42i32
+    }
+    println("inner={inner}")
+}

@@ -1,0 +1,10 @@
+// match 缺少通配符,但有 default
+type Shape = | Circle(f64) | Rect(f64, f64)
+fun area(s: Shape): f64 {
+    match s {
+        Circle(r) => 3.14 * r * r
+    }
+}
+fun main(): void {
+    println(area(Circle(2.0)))
+}

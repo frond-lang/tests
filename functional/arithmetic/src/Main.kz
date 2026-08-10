@@ -163,22 +163,22 @@ fun main(): void {
     check(inf_f64 * 0.0 != inf_f64, "Inf * 0 = NaN (not Inf)")
 
     // f32 浮点
-    val nan_f32: f32 = 0.0 / 0.0
+    val nan_f32: f32 = 0.0f32 / 0.0f32
     check(nan_f32 != nan_f32, "f32 NaN != NaN")
-    val inf_f32: f32 = 1.0 / 0.0
+    val inf_f32: f32 = 1.0f32 / 0.0f32
     check(inf_f32 > 0.0, "f32 +Inf > 0")
 
     // f16 浮点（半精度）
     val f16_one: f16 = 1.0
     check(f16_one + f16_one == 2.0, "f16 1+1 == 2")
-    val nan_f16: f16 = 0.0 / 0.0
+    val nan_f16: f16 = 0.0f16 / 0.0f16
     check(nan_f16 != nan_f16, "f16 NaN != NaN")
 
     // f128 浮点（四倍精度）
     val f128_pi: f128 = 3.141592653589793238462643383279
     check(f128_pi > 3.0, "f128 pi > 3")
     check(f128_pi < 4.0, "f128 pi < 4")
-    val nan_f128: f128 = 0.0 / 0.0
+    val nan_f128: f128 = 0.0f128 / 0.0f128
     check(nan_f128 != nan_f128, "f128 NaN != NaN")
 
     // 类型提升边界（需要显式 cast）

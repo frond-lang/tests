@@ -1,0 +1,7 @@
+// 类型推断:整数字面量与浮点统一
+fun id<T>(x: T): T { x }
+fun main(): void {
+    val a = id(1)
+    val b = id(1.0)
+    println("a={a} b={b}")
+}

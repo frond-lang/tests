@@ -1,0 +1,6 @@
+// i32 大值截断为 i8
+fun main(): void {
+    val big: i32 = 1000i32
+    val trunc: i8 = cast(big).to(i8)
+    println("trunc={trunc}")
+}

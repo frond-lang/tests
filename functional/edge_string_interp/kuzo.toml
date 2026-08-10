@@ -1,6 +1,6 @@
 [package]
 name = "edge_string_interp"
-entry = "src/Main.kuzo"
+entry = "src/Main.kz"
 
 [build]
 output_dir = "out"
