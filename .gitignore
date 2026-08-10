@@ -2,7 +2,7 @@
 out/
 
 # Compiled artifacts
-*.resin
+*.kzo
 
 # macOS
 .DS_Store
