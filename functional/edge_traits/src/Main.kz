@@ -22,91 +22,91 @@ fun summary(): void {
 
 // trait 默认方法链：A 调 B 调 C
 trait Chain {
-    fun base(self): str
-    fun wrap1(self): str {
-        "[" + self.base() + "]"
+    fun base(): str
+    fun wrap1(): str {
+        "[" + base() + "]"
     }
-    fun wrap2(self): str {
-        "{{" + self.wrap1() + "}}"
+    fun wrap2(): str {
+        "{{" + wrap1() + "}}"
     }
-    fun wrap3(self): str {
-        "<" + self.wrap2() + ">"
+    fun wrap3(): str {
+        "<" + wrap2() + ">"
     }
 }
 
 // trait 方法互相调用（a 调 b，b 调 a）
 trait Mutual {
-    fun isEven(self, n: i32): bool
-    fun isOdd(self, n: i32): bool {
-        !self.isEven(n)
+    fun isEven(n: i32): bool
+    fun isOdd(n: i32): bool {
+        !isEven(n)
     }
 }
 
 // trait with state change method
 trait Counter {
-    fun current(self): i32
+    fun current(): i32
 }
 
 // trait 方法返回实现 trait 的类型（多态分派）
 trait Shape {
-    fun area(self): f64
-    fun describe(self): str {
-        "shape area=" + cast(self.area()).to(str)
+    fun area(): f64
+    fun describe(): str {
+        "shape area=" + cast(area()).to(str)
     }
 }
 
 // 递归 trait 方法：List 长度通过 trait 方法递归
 trait ListOps {
-    fun length(self): i32
-    fun sum(self): i32
+    fun length(): i32
+    fun sum(): i32
 }
 
 // 实现 Chain 的类型
 type TagA: Chain = TagA(label: str) {
-    fun base(self): str {
-        self.label
+    fun base(): str {
+        label
     }
 }
 
 type TagB: Chain = TagB(num: i32) {
-    fun base(self): str {
-        cast(self.num).to(str)
+    fun base(): str {
+        cast(num).to(str)
     }
 }
 
 // 实现 Mutual 的类型
 type MutCheck: Mutual = MutCheck(dummy: i32) {
-    fun isEven(self, n: i32): bool {
+    fun isEven(n: i32): bool {
         n % 2 == 0
     }
 }
 
 // 实现 Counter 的类型
 type CounterBox: Counter = CounterBox(count: i32) {
-    fun current(self): i32 {
-        self.count
+    fun current(): i32 {
+        count
     }
-    fun next(self): CounterBox {
-        CounterBox(self.count + 1)
+    fun next(): CounterBox {
+        CounterBox(count + 1)
     }
 }
 
 // 实现 Shape 的多个类型
 type CircleS: Shape = CircleS(r: f64) {
-    fun area(self): f64 {
-        3.141592653589793f64 * self.r * self.r
+    fun area(): f64 {
+        3.141592653589793f64 * r * r
     }
 }
 
 type RectS: Shape = RectS(w: f64, h: f64) {
-    fun area(self): f64 {
-        self.w * self.h
+    fun area(): f64 {
+        w * h
     }
 }
 
 type SquareS: Shape = SquareS(side: f64) {
-    fun area(self): f64 {
-        self.side * self.side
+    fun area(): f64 {
+        side * side
     }
 }
 
@@ -128,11 +128,11 @@ fun listSum(l: IntList): i32 {
 }
 
 type IntListWrap: ListOps = IntListWrap(inner: IntList) {
-    fun length(self): i32 {
-        listLen(self.inner)
+    fun length(): i32 {
+        listLen(inner)
     }
-    fun sum(self): i32 {
-        listSum(self.inner)
+    fun sum(): i32 {
+        listSum(inner)
     }
 }
 
@@ -299,17 +299,17 @@ fun main(): void {
 
     // ─── 11. 大胆：trait 方法递归（直接自递归，非顶层函数）───
     println("--- Trait Method Direct Recursion (probe) ---")
-    // 探测：trait 方法内部是否能直接递归调用 self.method()
-    // 这里通过 ListOps.sum 调用 listSum（顶层函数），而非直接 self.sum
+    // 探测：trait 方法内部是否能直接递归调用 this.method()
+    // 这里通过 ListOps.sum 调用 listSum（顶层函数），而非直接 this.sum
     // 尝试直接在 trait 方法中递归（通过 match 模式）
-    // 注：Kuzo 不允许 trait 方法体中直接写 match self 递归（self 类型不明确）
+    // 注：Kuzo 不允许 trait 方法体中直接写 match this 递归（this 类型不明确）
     // 所以用顶层函数包装。此处验证包装路径正常
     val big_list = Cons(100i32, Cons(200i32, Cons(300i32, Nil)))
     val lw_big = IntListWrap(big_list)
     check(lw_big.length() == 3, "big list length 3")
     check(lw_big.sum() == 600, "big list sum 100+200+300")
 
-    // ─── 12. trait 方法参数（非 self 参数）───
+    // ─── 12. trait 方法参数（非 this 参数）───
     println("--- Trait Method with Extra Params ---")
     val mc2 = MutCheck()
     // isEven/isOdd 接受额外参数 n

@@ -22,108 +22,108 @@ fun summary(): void {
 
 // 带默认方法的 trait（默认方法当前有 bug，仅测试显式实现的方法）
 trait Greet {
-    fun name(self): str
-    fun hello(self): str {
-        "Hello, " + self.name()
+    fun name(): str
+    fun hello(): str {
+        "Hello, " + name()
     }
 }
 
 trait Sizeable {
-    fun sz(self): i32
+    fun sz(): i32
 }
 
 trait Show {
-    fun show(self): str
+    fun show(): str
 }
 
 // Trait 边缘类型（顶层定义）
 trait Named {
-    fun named(self): str
+    fun named(): str
 }
 trait Counted {
-    fun counted(self): i32
+    fun counted(): i32
 }
 type Triple: (Named, Counted, Show) = | A | B | C {
-    fun named(self): str {
-        match self {
+    fun named(): str {
+        match this {
             A => "alpha"
             B => "beta"
             C => "gamma"
         }
     }
-    fun counted(self): i32 {
-        match self {
+    fun counted(): i32 {
+        match this {
             A => 1
             B => 2
             C => 3
         }
     }
-    fun show(self): str {
-        self.named() + ":" + cast(self.counted()).to(str)
+    fun show(): str {
+        named() + ":" + cast(counted()).to(str)
     }
 }
 
 trait Chain {
-    fun base(self): str
-    fun wrapped(self): str {
-        "[" + self.base() + "]"
+    fun base(): str
+    fun wrapped(): str {
+        "[" + base() + "]"
     }
 }
 type Tag: Chain = Tag(label: str) {
-    fun base(self): str {
-        self.label
+    fun base(): str {
+        label
     }
 }
 
 type Pair2 = Pair2(a: i32, b: i32)
 trait PairOps {
-    fun swapped(self): Pair2
+    fun swapped(): Pair2
 }
 type Box2: PairOps = Box2(p: Pair2) {
-    fun swapped(self): Pair2 {
-        Pair2(self.p.b, self.p.a)
+    fun swapped(): Pair2 {
+        Pair2(p.b, p.a)
     }
 }
 
 // 多 trait 组合（hello 使用 trait 默认方法，不显式实现）
 type Ordering: (Greet, Sizeable, Show) = | Lt | Eq | Gt {
-    fun name(self): str {
-        match self {
+    fun name(): str {
+        match this {
             Lt => "less"
             Eq => "equal"
             Gt => "greater"
         }
     }
 
-    fun sz(self): i32 {
-        match self {
+    fun sz(): i32 {
+        match this {
             Lt => -1
             Eq => 0
             Gt => 1
         }
     }
 
-    fun show(self): str {
-        "Ordering." + self.name()
+    fun show(): str {
+        "Ordering." + name()
     }
 }
 
 // 不同类型实现同一 trait
 type Color: Sizeable = | Red | Green | Blue {
-    fun sz(self): i32 { 3 }
+    fun sz(): i32 { 3 }
 }
 
 type Pt: (Sizeable, Show) = Pt(x: i32, y: i32) {
-    fun sz(self): i32 { 2 }
-    fun show(self): str {
-        "Pt(" + cast(self.x).to(str) + "," + cast(self.y).to(str) + ")"
+    fun sz(): i32 { 2 }
+    fun show(): str {
+        "Pt(" + cast(x).to(str) + "," + cast(y).to(str) + ")"
     }
 }
 
 // 实现 Greet 的记录（hello 使用 trait 默认方法）
 type Animal: Greet = Animal(species: str, sound: str) {
-    fun name(self): str {
-        self.species
+    fun name(): str {
+        species
     }
 }
 

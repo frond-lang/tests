@@ -1,0 +1,81 @@
+// p33_trait_features.kz — trait 继承 + 关联类型 + turbofish + inline trait 测试
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// ── trait 继承 ──
+trait Animal { fun name(): str }
+trait Pet(Animal) { fun owner(): str }
+
+type Dog = Dog(n: str, o: str) {
+    fun name(): str { n }
+    fun owner(): str { o }
+}
+
+// ── turbofish ──
+fun identity<T>(x: T): T { x }
+fun first<T>(arr: T[]): T? { 
+    if arr.len() == 0 { null }
+    else { arr[0] }
+}
+
+pub fun main(): void {
+    println("=== Trait Features ===")
+
+    // ── trait 继承 ──
+    println("--- Trait Inheritance ---")
+    val d = Dog("Rex", "Alice")
+    check(d.name() == "Rex", "trait inherit: name()")
+    check(d.owner() == "Alice", "trait inherit: owner()")
+
+    // 多态：作为 Animal 使用
+    fun animal_name(a: Animal): str { a.name() }
+    check(animal_name(d) == "Rex", "trait polymorphism: as Animal")
+
+    // ── turbofish ──
+    println("--- Turbofish ---")
+    val a = identity<i32>(42)
+    check(a == 42, "turbofish: identity<i32>(42)")
+    val b = identity<f64>(3.14f64)
+    check(b == 3.14f64, "turbofish: identity<f64>(3.14)")
+    val c = identity<i64>(9999999999i64)
+    check(c == 9999999999i64, "turbofish: identity<i64>")
+
+    // turbofish with array
+    val arr = [1i32, 2, 3]
+    val f = first<i32>(arr)
+    check(f == 1, "turbofish: first<i32>(arr)")
+
+    // ── for-in with range ──
+    println("--- For-in with Range ---")
+    var sum: i64 = 0
+    for i in 1i64..5i64 {
+        sum = sum + i
+    }
+    check(sum == 10, "for-in range 1..5: sum=10")
+
+    // inclusive range
+    var sum2: i64 = 0
+    for j in 1i64..=5i64 {
+        sum2 = sum2 + j
+    }
+    check(sum2 == 15, "for-in range 1..=5: sum=15")
+
+    summary()
+}

@@ -1,0 +1,64 @@
+// p20_record_extend.kz — 记录扩展 (RecordExtend) 专项测试
+// 验证 (...base, field: value) 和 (field: value, ...base, more: value) 语法
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+type Pt = Pt(x: i32, y: i32)
+type Pt3 = Pt3(x: i32, y: i32, z: i32)
+
+pub fun main(): void {
+    println("=== Record Extend ===")
+
+    val p = Pt(1, 2)
+    // 基本扩展：只改 x，保留 y
+    val p2 = (...p, x: 99)
+    check(p2.x == 99, "extend: override x")
+    check(p2.y == 2, "extend: keep y")
+
+    // 扩展并新增字段
+    val p3 = (...p, z: 5)
+    check(p3.x == 1, "extend+add: keep x")
+    check(p3.y == 2, "extend+add: keep y")
+    check(p3.z == 5, "extend+add: new z")
+
+    // 前置字段 + 扩展
+    val p4 = (w: 0, ...p)
+    check(p4.w == 0, "prefix+extend: w")
+    check(p4.x == 1, "prefix+extend: x")
+    check(p4.y == 2, "prefix+extend: y")
+
+    // 多字段覆盖
+    val p5 = (...p, x: 10, y: 20)
+    check(p5.x == 10, "multi-override: x")
+    check(p5.y == 20, "multi-override: y")
+
+    // 链式扩展
+    val base3 = Pt3(1, 2, 3)
+    val chained = (...(...base3, x: 100), y: 200)
+    check(chained.x == 100, "chained extend: x")
+    check(chained.y == 200, "chained extend: y")
+    check(chained.z == 3, "chained extend: z")
+
+    // 原对象不变（不可变语义）
+    check(p.x == 1, "original unchanged: x")
+    check(p.y == 2, "original unchanged: y")
+
+    summary()
+}

@@ -1,0 +1,92 @@
+// p21_array_fill_slice.kz — 数组 fill 语法 + 切片操作专项测试
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+pub fun main(): void {
+    println("=== Array Fill + Slice ===")
+
+    // ── 数组 fill ──
+    println("--- Array Fill ---")
+    val zeros = [0i32, ..5]
+    check(zeros.len() == 5, "fill: len 5")
+    check(zeros[0] == 0, "fill: elem 0")
+    check(zeros[4] == 0, "fill: elem 4")
+
+    val trues = [true, ..3]
+    check(trues.len() == 3, "fill bool: len 3")
+    check(trues[0] == true, "fill bool: elem 0")
+    check(trues[2] == true, "fill bool: elem 2")
+
+    // count 为变量表达式
+    val n: i32 = 4
+    val arr = [42i32, ..n]
+    check(arr.len() == 4, "fill var count: len 4")
+    check(arr[3] == 42, "fill var count: elem 3")
+
+    // count 为算术表达式
+    val m: i32 = 2
+    val arr2 = [7i32, ..(m + 3)]
+    check(arr2.len() == 5, "fill expr count: len 5")
+
+    // ── 切片操作 ──
+    println("--- Slice ---")
+    val data = [10i32, 20, 30, 40, 50]
+
+    // exclusive 切片 [1..3) => [20, 30]
+    val s1 = data[1..3]
+    check(s1.len() == 2, "slice exclusive: len")
+    check(s1[0] == 20, "slice exclusive: elem 0")
+    check(s1[1] == 30, "slice exclusive: elem 1")
+
+    // inclusive 切片 [1..=3] => [20, 30, 40]
+    val s2 = data[1..=3]
+    check(s2.len() == 3, "slice inclusive: len")
+    check(s2[2] == 40, "slice inclusive: elem 2")
+
+    // 全范围切片
+    val full = data[0..5]
+    check(full.len() == 5, "slice full: len")
+
+    // 空切片
+    val empty = data[2..2]
+    check(empty.len() == 0, "slice empty: len 0")
+
+    // 单元素切片
+    val single = data[2..3]
+    check(single.len() == 1, "slice single: len 1")
+    check(single[0] == 30, "slice single: elem 0")
+
+    // 切片后再切片
+    val nested = data[0..4][1..3]
+    check(nested.len() == 2, "nested slice: len")
+    check(nested[0] == 20, "nested slice: elem 0")
+
+    // 字符串切片
+    println("--- String Slice ---")
+    val s = "Hello World"
+    val sub = s[0..5]
+    check(sub == "Hello", "str slice exclusive")
+    val sub2 = s[6..=10]
+    check(sub2 == "World", "str slice inclusive")
+    val sub3 = s[0..0]
+    check(sub3 == "", "str slice empty")
+
+    summary()
+}

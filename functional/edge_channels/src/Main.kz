@@ -1,6 +1,4 @@
 // ── 边缘 channel 测试：大胆探测 channel 类型边界 ──
-// 约束：channel.recv() 在 if/else/循环分支内受 Bug #24 影响导致 event loop stuck。
-//       所有 send/recv 必须在函数顶层顺序执行。
 // 目标：探测 channel 支持的类型种类、容量边界、交错收发、复杂值传递。
 var failures: i32 = 0
 

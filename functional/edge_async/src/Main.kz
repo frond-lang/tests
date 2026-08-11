@@ -1,6 +1,6 @@
 // 边缘异步测试：async await/channel/timer/并发完成
-// 注意：Bug #24 — await 在 if/while 分支子图内会导致 event loop stuck。
-// 所有 await 操作必须在函数顶层，循环中收发 channel 用递归函数替代。
+// 覆盖 await/channel.recv 在 if 分支、else 分支、while 循环、嵌套 if-in-while 内的场景
+// （原 Bug #24 已于 2026-08-07 修复，分支子图内 await 现正常工作）
 var failures: i32 = 0
 
 fun check(cond: bool, name: str): void {
@@ -54,9 +54,7 @@ async fun asyncPair(x: i32, y: i32): Async<Pair> {
     Pair(x, y)
 }
 
-// 注意：channel.recv() 在 if/else 分支内也受 Bug #24 影响导致 event loop stuck。
-// 因此递归 channel 收发（base case 需要 if 判断）无法实现。
-// 循环/递归中收发 channel 需等待 Bug #24 修复后才能测试。
+// 以下场景原受 Bug #24 影响无法测试，现已修复，纳入回归覆盖。
 
 fun main(): void {
     println("=== Edge Async ===")
@@ -147,6 +145,80 @@ fun main(): void {
     big_ch.send(222)
     check(big_ch.recv() == 111, "channel large capacity recv 1")
     check(big_ch.recv() == 222, "channel large capacity recv 2")
+
+    // ── Bug #24 回归覆盖：分支子图内的 await / channel.recv ──
+    println("  -- Bug #24 regression: await in branch subgraphs --")
+
+    // while 循环内的 channel.recv（多元素求和）
+    val ch_while = channel<i32>(10)
+    ch_while.send(10)
+    ch_while.send(20)
+    ch_while.send(30)
+    var sum_while: i32 = 0
+    var i_while: i32 = 0
+    while i_while < 3 {
+        sum_while = sum_while + ch_while.recv()
+        i_while = i_while + 1
+    }
+    check(sum_while == 60, "while loop channel.recv sum=60")
+
+    // if 分支内的 channel.recv
+    val ch_if = channel<i32>(5)
+    ch_if.send(99)
+    var got_if: i32 = 0
+    if true {
+        got_if = ch_if.recv()
+    }
+    check(got_if == 99, "if branch channel.recv=99")
+
+    // else 分支内的 channel.recv
+    val ch_else = channel<i32>(5)
+    ch_else.send(77)
+    var got_else: i32 = 0
+    if false {
+        got_else = 0
+    } else {
+        got_else = ch_else.recv()
+    }
+    check(got_else == 77, "else branch channel.recv=77")
+
+    // while 循环内的 asyncVal().await
+    var sum_async_while: i32 = 0
+    var i_async_while: i32 = 0
+    while i_async_while < 3 {
+        sum_async_while = sum_async_while + asyncVal(i_async_while).await()
+        i_async_while = i_async_while + 1
+    }
+    check(sum_async_while == 3, "while loop asyncVal.await sum=3")
+
+    // if 分支内的 asyncVal().await
+    var got_async_if: i32 = 0
+    if true {
+        got_async_if = asyncVal(42).await()
+    }
+    check(got_async_if == 42, "if branch asyncVal.await=42")
+
+    // 嵌套 if 在 while 内，内层 await
+    var sum_nested: i32 = 0
+    var i_nested: i32 = 0
+    while i_nested < 3 {
+        if i_nested >= 0 {
+            sum_nested = sum_nested + asyncVal(i_nested).await()
+        }
+        i_nested = i_nested + 1
+    }
+    check(sum_nested == 3, "nested if in while asyncVal.await sum=3")
+
+    // while 循环内 channel 收发交错（send 和 recv 交替）
+    val ch_alt = channel<i32>(2)
+    var sum_alt: i32 = 0
+    var i_alt: i32 = 0
+    while i_alt < 3 {
+        ch_alt.send(i_alt * 10)
+        sum_alt = sum_alt + ch_alt.recv()
+        i_alt = i_alt + 1
+    }
+    check(sum_alt == 0 + 10 + 20, "while loop send/recv alternate sum=30")
 
     summary()
 }

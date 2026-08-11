@@ -1,0 +1,53 @@
+// p32_async_select.kz — async + select 表达式测试（顶层 async 函数）
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+async fun simple_async(): i32 { 42i32 }
+async fun inc_async(x: i32): i32 { x + 1 }
+
+val ch1 = channel<i32>(1)
+val ch2 = channel<i32>(1)
+async fun producer1(): void { ch1.send(42) }
+async fun producer2(): void { ch2.send(99) }
+
+pub fun main(): void {
+    println("=== Async + Select ===")
+
+    val r1 = simple_async()
+    check(r1 == 42, "async fn basic")
+    val r2 = inc_async(41)
+    check(r2 == 42, "async fn with param")
+
+    println("--- Select ---")
+    val result = select {
+        ch1.recv() => v => v + 1
+        ch2.recv() => v => v + 2
+    }
+    check(result == 43 || result == 101, "select: one branch fires")
+
+    val slow = channel<i32>(1)
+    val timed = select {
+        slow.recv() => v => v
+        timeout(100) => -1
+    }
+    check(timed == -1, "select: timeout fires")
+
+    summary()
+}

@@ -1,0 +1,84 @@
+// 最小复现：while 循环内 if 分支中的 str var 赋值丢失
+// 预期：result 应为 "XaXbXcX" (len=7)
+// 如果 bug 存在：if 分支内的追加丢失，result 只有 "XXXX" (len=4)
+
+fun test_while_if_str(): str {
+    var result: str = ""
+    var i: i32 = 0
+    while i < 4 {
+        // 模拟 cursor_move_to —— 这行在循环体内直接赋值，应该正常
+        result = result + "X"
+        // 模拟 if 分支内的 out = out + "L"
+        if i < 3 {
+            result = result + "a"
+        } else {
+            result = result + "b"
+        }
+        i = i + 1
+    }
+    result
+}
+
+// 对照组：while 循环内直接赋值（无 if 分支）
+fun test_while_str(): str {
+    var result: str = ""
+    var i: i32 = 0
+    while i < 4 {
+        result = result + "X"
+        result = result + "a"
+        i = i + 1
+    }
+    result
+}
+
+// 对照组：i32 在 while + if 中
+fun test_while_if_i32(): i32 {
+    var result: i32 = 0
+    var i: i32 = 0
+    while i < 4 {
+        result = result + 10
+        if i < 3 {
+            result = result + 1
+        } else {
+            result = result + 2
+        }
+        i = i + 1
+    }
+    result
+}
+
+// 更接近编辑器的场景：str 拼接在 if 分支
+fun test_while_if_str_concat(): str {
+    var out: str = "S"
+    var r: i32 = 0
+    val total: i32 = 2
+    while r < 4 {
+        out = out + "M"
+        if r < total {
+            out = out + "L"
+        } else {
+            out = out + "~"
+        }
+        r = r + 1
+    }
+    out
+}
+
+fun main(): void {
+    println("=== str writeback bug test ===")
+
+    val r1 = test_while_str()
+    println("test_while_str: \"" + r1 + "\" (expected: XaXaXaXa, len=8)")
+    println("  len=" + cast(r1.bytes().len()).to(str))
+
+    val r2 = test_while_if_str()
+    println("test_while_if_str: \"" + r2 + "\" (expected: XaXaXaXb, len=8)")
+    println("  len=" + cast(r2.bytes().len()).to(str))
+
+    val r3 = test_while_if_i32()
+    println("test_while_if_i32: " + cast(r3).to(str) + " (expected: 45)")
+
+    val r4 = test_while_if_str_concat()
+    println("test_while_if_str_concat: \"" + r4 + "\" (expected: SMLMLM~~, len=9)")
+    println("  len=" + cast(r4.bytes().len()).to(str))
+}

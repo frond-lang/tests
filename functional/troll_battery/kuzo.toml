@@ -1,6 +1,6 @@
 [package]
 name = "troll_battery"
-entry = "probes/p_tmp_block_defer.kz"
+entry = "probes/p39_defer_lifo.kz"
 
 [build]
 output_dir = "out"
