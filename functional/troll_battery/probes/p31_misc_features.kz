@@ -1,4 +1,4 @@
-// p31_misc_features.kz — 杂项特性测试：escape sequences, neg literal boundary, cast try_to, sci notation
+// p31_misc_features.kz — 杂项特性测试：escape sequences, neg literal boundary, as cast, sci notation
 var failures: i32 = 0
 
 fun check(cond: bool, name: str): void {
@@ -75,16 +75,11 @@ pub fun main(): void {
     val f32val = 1.5e10f32
     check(f32val > 1e9f32, "1.5e10f32")
 
-    // ── cast try_to ──
-    println("--- Cast try_to ---")
-    // 探测：cast(x).try_to(T) 是否支持
+    // ── as cast ──
+    println("--- as cast ---")
     val big: i64 = 99999999999i64
-    // try_to 应返回 Result 或 nullable
-    // 注：如不支持，会 parse/type error
-    // val result = cast(big).try_to(i32)  // 探测
-    // 暂时只测 to
-    val truncated = cast(big).to(i32)
-    check(truncated == cast(big).to(i32), "cast i64->i32 deterministic")
+    val truncated = big as i32
+    check(truncated == big as i32, "cast i64->i32 deterministic")
 
     summary()
 }

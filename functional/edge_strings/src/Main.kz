@@ -99,31 +99,31 @@ fun main(): void {
     // \u0301 组合尖音符（分解形式 é = e + U+0301）
     val combined = "e\u0301"
     check(combined.len() == 2, "e + \\u0301 = 2 codepoints")
-    check(cast(combined[0]).to(i32) == 101, "e + \\u0301 [0] = 'e' (101)")
-    check(cast(combined[1]).to(i32) == 769, "e + \\u0301 [1] = U+0301 (769)")
+    check((combined[0]) as i32 == 101, "e + \\u0301 [0] = 'e' (101)")
+    check((combined[1]) as i32 == 769, "e + \\u0301 [1] = U+0301 (769)")
     // \u{XXXX} 花括号形式
     val heart = "\u{2764}"
     check(heart.len() == 1, "\\u{2764} heart = 1 codepoint")
-    check(cast(heart[0]).to(i32) == 10084, "\\u{2764} = U+2764 (10084)")
+    check((heart[0]) as i32 == 10084, "\\u{2764} = U+2764 (10084)")
     // \u{1F600} 辅助平面（emoji）
     val emoji = "\u{1F600}"
     check(emoji.len() == 1, "\\u{1F600} emoji = 1 codepoint")
-    check(cast(emoji[0]).to(i32) == 128512, "\\u{1F600} = U+1F600 (128512)")
+    check((emoji[0]) as i32 == 128512, "\\u{1F600} = U+1F600 (128512)")
     // \u00E9 预组合形式 é
     val precomposed = "\u00E9"
     check(precomposed.len() == 1, "\\u00E9 precomposed é = 1 codepoint")
-    check(cast(precomposed[0]).to(i32) == 233, "\\u00E9 = U+00E9 (233)")
+    check((precomposed[0]) as i32 == 233, "\\u00E9 = U+00E9 (233)")
     // \0 NUL 字符
     val nul_str = "a\0b"
     check(nul_str.len() == 3, "a\\0b = 3 codepoints")
-    check(cast(nul_str[1]).to(i32) == 0, "a\\0b [1] = NUL (0)")
+    check((nul_str[1]) as i32 == 0, "a\\0b [1] = NUL (0)")
     // char 字面量也支持 \uXXXX
     val c_u: char = '\u00E9'
     check(c_u == 'é', "char \\u00E9 == 'é'")
     val c_brace: char = '\u{1F600}'
     check(c_brace == '😀', "char \\u{1F600} == '😀'")
     val c_nul: char = '\0'
-    check(cast(c_nul).to(i32) == 0, "char '\\0' codepoint == 0")
+    check(c_nul as i32 == 0, "char '\\0' codepoint == 0")
 
     // ─── 5. 字符串比较 Unicode 序 ───
     println("--- Unicode Comparison ---")
@@ -167,15 +167,15 @@ fun main(): void {
     // ─── 8. char 边界值 ───
     println("--- char Boundaries ---")
     // ASCII 边界
-    check(cast(' ').to(i32) == 32, "space char to i32 = 32")
-    check(cast('~').to(i32) == 126, "tilde char to i32 = 126")
-    check(cast('\n').to(i32) == 10, "newline char to i32 = 10")
-    check(cast('\t').to(i32) == 9, "tab char to i32 = 9")
+    check(' ' as i32 == 32, "space char to i32 = 32")
+    check('~' as i32 == 126, "tilde char to i32 = 126")
+    check('\n' as i32 == 10, "newline char to i32 = 10")
+    check('\t' as i32 == 9, "tab char to i32 = 9")
     // Unicode 边界
-    check(cast('你').to(i32) == 20320, "你 to i32 = 20320")
-    check(cast('😀').to(i32) == 128512, "😀 to i32 = 128512 (U+1F600)")
+    check('你' as i32 == 20320, "你 to i32 = 20320")
+    check('😀' as i32 == 128512, "😀 to i32 = 128512 (U+1F600)")
     // i32 → char 往返
-    check(cast(128512i32).to(char) == '😀', "i32 128512 to 😀")
+    check(128512i32 as char == '😀', "i32 128512 to 😀")
 
     // ─── 9. 字符串与 null 交互 ───
     println("--- String & Nullable ---")

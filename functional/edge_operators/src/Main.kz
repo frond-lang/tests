@@ -175,9 +175,9 @@ fun main(): void {
     val i: i32 = 10
     val l: i64 = 20i64
     // i32 + i64 需要显式 cast（Kuzo 严格类型）
-    check(cast(i).to(i64) + l == 30i64, "i32 cast to i64 + i64")
+    check(i as i64 + l == 30i64, "i32 cast to i64 + i64")
     val f: f64 = 1.5f64
-    check(cast(i).to(f64) + f == 11.5f64, "i32 cast to f64 + f64")
+    check(i as f64 + f == 11.5f64, "i32 cast to f64 + f64")
     // 同类型混合
     check(i + i == 20, "i32 + i32")
     check(l - l == 0i64, "i64 - i64")
@@ -222,12 +222,12 @@ fun main(): void {
 
     // ─── 15. 大胆：表达式中的 cast 嵌套 ───
     println("--- Cast in Expressions ---")
-    check(cast(10i32).to(i64) + cast(20i32).to(i64) == 30i64, "two casts in add")
-    check(cast(5i32).to(i64) * cast(6i32).to(i64) == 30i64, "two casts in mul")
-    check(cast(cast(100i32).to(i64)).to(i32) == 100, "nested cast roundtrip in expr")
+    check(10i32 as i64 + 20i32 as i64 == 30i64, "two casts in add")
+    check(5i32 as i64 * 6i32 as i64 == 30i64, "two casts in mul")
+    check((100i32 as i64) as i32 == 100, "nested cast roundtrip in expr")
     // cast 优先级
     val v2: i32 = 50
-    check(cast(v2).to(i64) + 10i64 == 60i64, "cast then add")
+    check(v2 as i64 + 10i64 == 60i64, "cast then add")
 
     // ─── 16. 大胆：复杂综合表达式 ───
     println("--- Complex Composite ---")

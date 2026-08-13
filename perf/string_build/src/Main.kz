@@ -12,7 +12,7 @@ fun main(): void {
         i = i + 1
     }
     val t1 = __instant_now_ns()
-    val slen = cast(s.len()).to(i32)
+    val slen = (s.len()) as i32
     println("string length = {slen}")
     val elapsed1 = (t1 - t0) / 1000000i64
     println("elapsed: {elapsed1} ms")
@@ -26,7 +26,7 @@ fun main(): void {
         j = j + 1
     }
     val t3 = __instant_now_ns()
-    val s2len = cast(s2.len()).to(i32)
+    val s2len = (s2.len()) as i32
     println("string2 length = {s2len}")
     val elapsed2 = (t3 - t2) / 1000000i64
     println("elapsed: {elapsed2} ms")

@@ -40,7 +40,7 @@ type Timeout: Err = Timeout(msg: str)
 fun lookup(id: i32): Throw<str, Error> {
     if id < 0 { throw UserNotFound("negative id") }
     if id == 0 { throw Timeout("timed out") }
-    Ok("user-" + cast(id).to(str))
+    Ok("user-" + id as str)
 }
 
 // 返回 Error 消息

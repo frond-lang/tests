@@ -4,7 +4,7 @@
 // Bug #60 修复（方案 A 全严）：所有 numeric 转换必须显式 cast。
 // 本文件验证显式 cast 后代码正确编译。
 fun main(): void {
-    val a: i64 = cast(1i32).to(i64)
-    val t: Throw<i64, Error> = Ok(cast(1i32).to(i64))
+    val a: i64 = 1i32 as i64
+    val t: Throw<i64, Error> = Ok(1i32 as i64)
     println(a)
 }

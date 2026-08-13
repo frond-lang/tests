@@ -50,7 +50,7 @@ fun main(): void {
     // 注：如不允许，会 parse/type error 或静默退出
     println("  INFO: i32(10) + i64(1e12) probe below")
     // 不能直接写 i32v + i64v（类型不匹配），改用 cast
-    val mixed_sum = cast(i32v).to(i64) + i64v
+    val mixed_sum = i32v as i64 + i64v
     check(mixed_sum == 1000000000010i64, "cast i32->i64 then add i64")
 
     // ─── 2. 跨类型比较（探测）───
@@ -59,7 +59,7 @@ fun main(): void {
     check(i32v == 10, "i32 == i32 literal")
     // 探测：i32 == i64（是否允许）
     println("  INFO: i32(10) == i64(10) probe below")
-    val cross_eq = cast(i32v).to(i64) == 10i64
+    val cross_eq = i32v as i64 == 10i64
     check(cross_eq, "cast i32->i64 == i64 literal")
     // f64 比较
     check(f64v == 2.5f64, "f64 == f64 literal")
@@ -67,47 +67,47 @@ fun main(): void {
     check(f64v > 2.0f64, "f64 > f64")
     // 探测：i32 == f64（如 10 == 10.0）
     println("  INFO: i32(10) == f64(10.0) probe below")
-    val num_eq = cast(i32v).to(f64) == 10.0f64
+    val num_eq = i32v as f64 == 10.0f64
     check(num_eq, "cast i32->f64 == f64 10.0")
 
     // ─── 3. cast 链（往返转换）───
     println("--- Cast Chains ---")
     // i32 -> f64 -> i32（应可逆，值范围内）
-    val roundtrip = cast(cast(42i32).to(f64)).to(i32)
+    val roundtrip = (42i32 as f64) as i32
     check(roundtrip == 42, "i32->f64->i32 roundtrip")
     // char -> i32 -> char（应可逆）
-    val ch_roundtrip = cast(cast('A').to(i32)).to(char)
+    val ch_roundtrip = ('A' as i32) as char
     check(ch_roundtrip == 'A', "char->i32->char roundtrip")
     // bool -> i32（true 应为 1，false 应为 0）— Bug #43 已修复
-    val bool_to_i = cast(true).to(i32)
-    println("  INFO: cast(true).to(i32) = {bool_to_i} (expect 1)")
+    val bool_to_i = true as i32
+    println("  INFO: true as i32 = {bool_to_i} (expect 1)")
     check(bool_to_i == 1, "bool true -> i32 = 1")
-    val bool_false_i = cast(false).to(i32)
-    println("  INFO: cast(false).to(i32) = {bool_false_i} (expect 0)")
+    val bool_false_i = false as i32
+    println("  INFO: false as i32 = {bool_false_i} (expect 0)")
     check(bool_false_i == 0, "bool false -> i32 = 0")
     // i32 -> bool（非零应为 true）
-    val i_to_bool = cast(42i32).to(bool)
+    val i_to_bool = 42i32 as bool
     check(i_to_bool == true, "i32 42 -> bool = true")
-    val zero_to_bool = cast(0i32).to(bool)
+    val zero_to_bool = 0i32 as bool
     check(zero_to_bool == false, "i32 0 -> bool = false")
 
     // ─── 4. cast 截断与溢出（探测）───
     println("--- Cast Truncation & Overflow ---")
     // i64 -> i32 截断（大 i64 截断为 i32）
     val big_i64: i64 = 4294967296i64  // 2^32
-    val truncated = cast(big_i64).to(i32)
-    println("  INFO: cast(4294967296i64).to(i32) = {truncated} (truncation, expect 0)")
+    val truncated = big_i64 as i32
+    println("  INFO: 4294967296i64 as i32 = {truncated} (truncation, expect 0)")
     check(truncated == 0, "i64 2^32 -> i32 truncated to 0")
     // f64 -> i32 截断（小数截断）
-    val trunc_f = cast(3.99f64).to(i32)
+    val trunc_f = 3.99f64 as i32
     check(trunc_f == 3, "f64 3.99 -> i32 = 3 (truncation)")
-    val trunc_neg = cast(-2.7f64).to(i32)
+    val trunc_neg = -2.7f64 as i32
     check(trunc_neg == -2, "f64 -2.7 -> i32 = -2 (truncation toward zero)")
     // f64 -> i32 溢出（超大 f64）
     val huge_f = 1e18f64  // Bug #20: 科学计数法可能解析错误，探测
     println("  INFO: 1e18f64 literal = {huge_f} (Bug #20 if 1.0)")
-    val huge_cast = cast(huge_f).to(i32)
-    println("  INFO: cast(1e18).to(i32) = {huge_cast} (overflow, behavior unknown)")
+    val huge_cast = huge_f as i32
+    println("  INFO: 1e18 as i32 = {huge_cast} (overflow, behavior unknown)")
 
     // ─── 5. 运算符优先级 ───
     println("--- Operator Precedence ---")
@@ -218,8 +218,8 @@ fun main(): void {
     val u64_max: u64 = 18446744073709551615u64
     check(u64_max == 18446744073709551615u64, "u64 MAX")
     // u128 MAX（Bug #25：字面量无法表示，用 cast）
-    val u128_max = cast(-1i128).to(u128)
-    println("  INFO: cast(-1i128).to(u128) = {u128_max} (u128 MAX, Bug #25 workaround)")
+    val u128_max = -1i128 as u128
+    println("  INFO: -1i128 as u128 = {u128_max} (u128 MAX, Bug #25 workaround)")
     // wrapping 加法（i32 MAX + 1 应回绕到 MIN）
     val wrap_add = i32_max + 1
     check(wrap_add == -2147483648, "i32 MAX + 1 wrapping to MIN")

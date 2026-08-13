@@ -7,14 +7,14 @@ fun main(): void {
     // swap: 返回旧值，设置新值
     val old = a.swap(42i32)
     if old != 0i32 {
-        println("FAIL: swap should return old value 0, got " ++ cast(old).to(str))
+        println("FAIL: swap should return old value 0, got " ++ old as str)
         return
     }
 
     // load: 读取当前值
     val cur = a.load()
     if cur != 42i32 {
-        println("FAIL: load should return 42, got " ++ cast(cur).to(str))
+        println("FAIL: load should return 42, got " ++ cur as str)
         return
     }
 
@@ -22,7 +22,7 @@ fun main(): void {
     a.store(100i32)
     val after_store = a.load()
     if after_store != 100i32 {
-        println("FAIL: after store(100), load should return 100, got " ++ cast(after_store).to(str))
+        println("FAIL: after store(100), load should return 100, got " ++ after_store as str)
         return
     }
 
@@ -34,7 +34,7 @@ fun main(): void {
     }
     val after_cas1 = a.load()
     if after_cas1 != 200i32 {
-        println("FAIL: after successful compare_exchange, load should return 200, got " ++ cast(after_cas1).to(str))
+        println("FAIL: after successful compare_exchange, load should return 200, got " ++ after_cas1 as str)
         return
     }
 
@@ -46,7 +46,7 @@ fun main(): void {
     }
     val after_cas2 = a.load()
     if after_cas2 != 200i32 {
-        println("FAIL: after failed compare_exchange, value should remain 200, got " ++ cast(after_cas2).to(str))
+        println("FAIL: after failed compare_exchange, value should remain 200, got " ++ after_cas2 as str)
         return
     }
 

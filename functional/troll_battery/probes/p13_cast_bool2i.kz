@@ -1,6 +1,6 @@
 // bool -> i32 转换
 fun main(): void {
     val b: bool = true
-    val i: i32 = cast(b).to(i32)
+    val i: i32 = b as i32
     println("i={i}")
 }

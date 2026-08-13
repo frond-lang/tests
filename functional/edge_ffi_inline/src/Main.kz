@@ -1,0 +1,9 @@
+@extern("C")
+fun my_add(a: i32, b: i32): i32 #{
+    return a + b;
+}#
+
+fun main(): void {
+    println("hello")
+    println(my_add(2, 3))
+}

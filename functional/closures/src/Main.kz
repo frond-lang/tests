@@ -26,7 +26,7 @@ type IntFn = () -> i32
 // 逃逸闭包：捕获 mutable state
 fun makeCounter(): IntFn {
     var n: i32 = 0
-    fun() {
+    fun(): i32 {
         n = n + 1
         n
     }
@@ -59,12 +59,12 @@ fun main(): void {
 
     // 捕获 val
     val x: i32 = 10
-    val read = fun() { x }
+    val read = fun(): i32 { x }
     check(read() == 10, "capture val")
 
     // var 共享：闭包内修改后外部可见（已修复 P1 #6）
     var y: i32 = 0
-    val inc = fun() { y = y + 1 }
+    val inc = fun(): void { y = y + 1 }
     inc(); inc(); inc()
     check(y == 3, "var capture mutation visible externally")
     inc()
@@ -72,7 +72,7 @@ fun main(): void {
 
     // var 共享：外部修改后闭包可见
     var z: i32 = 10
-    val readZ = fun() { z }
+    val readZ = fun(): i32 { z }
     z = 20
     check(readZ() == 20, "external mutation visible in closure")
 
@@ -91,8 +91,8 @@ fun main(): void {
 
     // 嵌套闭包共享 var：inner 返回修改后的值
     var count: i32 = 0
-    val inner = fun() { count = count + 1; count }
-    val outer = fun() {
+    val inner = fun(): i32 { count = count + 1; count }
+    val outer = fun(): i32 {
         inner()
         inner()
     }
@@ -102,17 +102,17 @@ fun main(): void {
     check(inner() == 6, "nested closures share var 2")
 
     // 高阶函数
-    val f = fun() { 42 }
+    val f = fun(): i32 { 42 }
     check(apply(f) == 42, "apply")
     check(twice(f) == 84, "twice")
 
     // 函数类型
-    val g = fun() { 100 }
+    val g = fun(): i32 { 100 }
     check(g() == 100, "function value")
 
     // 闭包捕获并运算
     val base: i32 = 100
-    val adder = fun(n: i32) { base + n }
+    val adder = fun(n: i32): i32 { base + n }
     check(adder(5) == 105, "closure with parameter")
 
     // ─── 闭包边缘测试 ───
@@ -125,7 +125,7 @@ fun main(): void {
 
     // 闭包捕获闭包（高阶组合）
     fun makeAdder(n: i32): IntFn {
-        fun() { n + 1 }
+        fun(): i32 { n + 1 }
     }
     val add1 = makeAdder(0)
     val add10 = makeAdder(9)
@@ -137,7 +137,7 @@ fun main(): void {
     // 闭包内多层 var 捕获
     var counter: i32 = 0
     var double_count: i32 = 0
-    val tickler = fun() {
+    val tickler = fun(): void {
         counter = counter + 1
         double_count = counter * 2
     }
@@ -151,17 +151,17 @@ fun main(): void {
     // Bug #31：多闭包共享可变 var 并相互调用时，前序闭包的修改被覆盖（只剩最内层 "C"）
     // 三体都执行（计数器验证 count==1 而非 0），但各从构造时快照读 var → 各写各的 → 最后写入者覆盖
     var chain_log: str = ""
-    val innermost = fun() { chain_log = chain_log + "C" }
-    val middle = fun() { chain_log = chain_log + "B"; innermost() }
-    val outer_call = fun() { chain_log = chain_log + "A"; middle() }
+    val innermost = fun(): void { chain_log = chain_log + "C" }
+    val middle = fun(): void { chain_log = chain_log + "B"; innermost() }
+    val outer_call = fun(): void { chain_log = chain_log + "A"; middle() }
     outer_call()
     check(chain_log == "ABC", "Bug #31: closure chain preserves all writers = ABC")
 
     // Bug #31 已修复：三体都执行，chain_count 正确累加
     var chain_count: i32 = 0
-    val ic = fun() { chain_count = chain_count + 1 }
-    val mc = fun() { chain_count = chain_count + 1; ic() }
-    val oc = fun() { chain_count = chain_count + 1; mc() }
+    val ic = fun(): void { chain_count = chain_count + 1 }
+    val mc = fun(): void { chain_count = chain_count + 1; ic() }
+    val oc = fun(): void { chain_count = chain_count + 1; mc() }
     oc()
     check(chain_count == 3, "Bug #31: counter shows 3 (all bodies executed)")
 
@@ -173,7 +173,7 @@ fun main(): void {
 
     // 递归闭包（通过捕获自身 var，避免类型不匹配）
     var rec_count: i32 = 0
-    val rec_fn = fun() {
+    val rec_fn = fun(): i32 {
         rec_count = rec_count + 1
         if rec_count < 5 { rec_count } else { rec_count }
     }
@@ -186,9 +186,9 @@ fun main(): void {
 
     // 闭包作为参数 + 返回值（高阶组合）
     fun compose(f: IntFn, g: IntFn): IntFn {
-        fun() { f() + g() }
+        fun(): i32 { f() + g() }
     }
-    val composed = compose(fun() { 10 }, fun() { 20 })
+    val composed = compose(fun(): i32 { 10 }, fun(): i32 { 20 })
     check(composed() == 30, "compose two closures")
 
     // 闭包多次调用状态持久

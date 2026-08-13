@@ -87,15 +87,15 @@ pub fun main(): void {
     // ── 闭包捕获 ──
     println("--- Closure Capture ---")
     var captured = 10i32
-    val adder = fun(x: i32) { captured + x }
+    val adder = fun(x: i32): i32 { captured + x }
     check(adder(5) == 15, "closure: capture var")
 
-    val setter = fun(v: i32) { captured = v }
+    val setter = fun(v: i32): void { captured = v }
     setter(99)
     check(captured == 99, "closure: modify captured var")
 
     fun make_adder(base: i32): (i32) -> i32 {
-        fun(x: i32) { base + x }
+        fun(x: i32): i32 { base + x }
     }
     val add10 = make_adder(10)
     check(add10(5) == 15, "closure: returned from function")

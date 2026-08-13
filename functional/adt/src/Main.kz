@@ -108,12 +108,12 @@ fun main(): void {
 
     // 泛型 Option（使用类型化字面量帮助推断）
     val some = Some(42i32)
-    check(optMap(some, fun(x: i32) { x + 1 }) == Some(43i32), "optMap Some")
+    check(optMap(some, fun(x: i32): i32 { x + 1 }) == Some(43i32), "optMap Some")
     check(optIsSome(some) == true, "isSome true")
     check(optIsSome(None) == false, "isSome None")
 
     // optMap None（在函数调用上下文中类型可推断）
-    check(optMap(Some(10i32), fun(x: i32) { x * 2 }) == Some(20i32), "optMap Some 10")
+    check(optMap(Some(10i32), fun(x: i32): i32 { x * 2 }) == Some(20i32), "optMap Some 10")
 
     // 递归列表（使用类型化字面量）
     val list = Cons(1i32, Cons(2i32, Cons(3i32, Nil)))

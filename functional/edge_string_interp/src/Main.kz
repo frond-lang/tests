@@ -198,7 +198,7 @@ fun main(): void {
     val name: str = "Alice"
     val age: i32 = 30
     val via_interp = "{name} is {age}"
-    val via_concat = name + " is " + cast(age).to(str)
+    val via_concat = name + " is " + age as str
     check(via_interp == via_concat, "interp equals concat")
     check(via_interp == "Alice is 30", "interp result correct")
 
@@ -240,29 +240,29 @@ fun main(): void {
     println("--- Hex Escape \\xHH ---")
     val esc_str = "\x1b"
     check(esc_str.len() == 1, "\\x1b length 1")
-    check(cast(esc_str[0]).to(i32) == 27, "\\x1b byte value 27")
+    check((esc_str[0]) as i32 == 27, "\\x1b byte value 27")
     val del_str = "\x7f"
-    check(cast(del_str[0]).to(i32) == 127, "\\x7f byte value 127")
+    check((del_str[0]) as i32 == 127, "\\x7f byte value 127")
     val nul_str = "\x00"
-    check(cast(nul_str[0]).to(i32) == 0, "\\x00 byte value 0")
+    check((nul_str[0]) as i32 == 0, "\\x00 byte value 0")
     val hi_str = "\xff"
-    check(cast(hi_str[0]).to(i32) == 255, "\\xff byte value 255")
+    check((hi_str[0]) as i32 == 255, "\\xff byte value 255")
     val a_str = "\x41"
     check(a_str == "A", "\\x41 equals A")
-    check(cast(a_str[0]).to(i32) == 65, "\\x41 byte value 65")
+    check((a_str[0]) as i32 == 65, "\\x41 byte value 65")
     // 混合 \x 与普通字符（ANSI 清屏序列 ESC[2J）
     val clear_seq = "\x1b[2J"
     check(clear_seq.len() == 4, "ESC[2J length 4")
-    check(cast(clear_seq[0]).to(i32) == 27, "ESC[2J first byte 27")
+    check((clear_seq[0]) as i32 == 27, "ESC[2J first byte 27")
     // \x7b = '{' 不得误判为插值起始
     val brace_via_hex = "\x7b"
-    check(cast(brace_via_hex[0]).to(i32) == 123, "\\x7b byte value 123")
+    check((brace_via_hex[0]) as i32 == 123, "\\x7b byte value 123")
     check(brace_via_hex == "\x7b", "\\x7b self-consistent")
     // char literal 也支持 \x
     val esc_char = '\x1b'
-    check(cast(esc_char).to(i32) == 27, "char \\x1b value 27")
+    check(esc_char as i32 == 27, "char \\x1b value 27")
     val a_char = '\x41'
-    check(cast(a_char).to(i32) == 65, "char \\x41 value 65")
+    check(a_char as i32 == 65, "char \\x41 value 65")
 
     summary()
 }

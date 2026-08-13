@@ -60,7 +60,7 @@ fun mapDouble(arr: i32[]): i32[] {
 // 顶层函数：数组反转（用 ++ 重建）
 fun reverseArr(arr: i32[]): i32[] {
     var out: i32[] = []
-    var i: i32 = cast(arr.len()).to(i32) - 1
+    var i: i32 = (arr.len()) as i32 - 1
     while i >= 0 {
         out = out ++ [arr[i]]
         i = i - 1
@@ -83,7 +83,7 @@ fun main(): void {
     check(chars.len() == 4, "char array len 4")
     check(chars[0] == 'a', "char arr[0] = a")
     check(chars[3] == 'd', "char arr[3] = d")
-    check(cast(chars[2]).to(i32) == 99, "char arr[2] to i32 = 99 (c)")
+    check((chars[2]) as i32 == 99, "char arr[2] to i32 = 99 (c)")
 
     val floats = [1.5f64, 2.5f64, 3.5f64]
     check(floats.len() == 3, "f64 array len 3")

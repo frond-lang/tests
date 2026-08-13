@@ -110,7 +110,7 @@ fun main(): void {
     var ci: i32 = 0
     while ci < 10 {
         val captured = ci
-        val fn = fun() { captured }
+        val fn = fun(): i32 { captured }
         closures_sum = closures_sum + fn()
         ci = ci + 1
     }
@@ -229,7 +229,7 @@ fun main(): void {
     var ci2: i32 = 0
     while ci2 < closure_arr.len() {
         val captured = closure_arr[ci2]
-        val fn = fun() { captured }
+        val fn = fun(): i32 { captured }
         csum = csum + fn()
         ci2 = ci2 + 1
     }

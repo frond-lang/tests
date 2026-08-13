@@ -103,7 +103,7 @@ pub fun main(): void {
 
     // char to int
     val ch = 'A'
-    val code = cast(ch).to(i32)
+    val code = ch as i32
     check(code == 65, "char: 'A' cast to i32 = 65")
 
     // ── 负数字面量边界 ──

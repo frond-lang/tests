@@ -78,7 +78,7 @@ fun main(): void {
 
     // 混合大小运算（需要 cast）
     val x: i32 = 100
-    val y: i64 = cast(x).to(i64) + 1i64
+    val y: i64 = x as i64 + 1i64
     check(y == 101i64, "i32 to i64 cast + add")
 
     // augmented assignment
@@ -184,7 +184,7 @@ fun main(): void {
     // 类型提升边界（需要显式 cast）
     // 注意：字面量 1000000000000 超 i32 范围会触发 Bug #21 静默退出，必须用 i64 后缀
     val i32_val: i32 = 1000000
-    val i64_val: i64 = cast(i32_val).to(i64) * cast(i32_val).to(i64)
+    val i64_val: i64 = i32_val as i64 * i32_val as i64
     check(i64_val == 1000000000000i64, "i32->i64 promotion avoids overflow")
 
     summary()

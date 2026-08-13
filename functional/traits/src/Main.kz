@@ -59,7 +59,7 @@ type Triple: (Named, Counted, Show) = | A | B | C {
         }
     }
     fun show(): str {
-        named() + ":" + cast(counted()).to(str)
+        named() + ":" + (counted()) as str
     }
 }
 
@@ -116,7 +116,7 @@ type Color: Sizeable = | Red | Green | Blue {
 type Pt: (Sizeable, Show) = Pt(x: i32, y: i32) {
     fun sz(): i32 { 2 }
     fun show(): str {
-        "Pt(" + cast(x).to(str) + "," + cast(y).to(str) + ")"
+        "Pt(" + x as str + "," + y as str + ")"
     }
 }
 
@@ -179,7 +179,7 @@ fun main(): void {
     check(tag_arr[2].base() == "c", "trait method on array elem 2")
 
     // trait 方法组合调用（使用 cast 而非 to_str）
-    check(B.named() + cast(B.counted()).to(str) == "beta2", "trait method composition")
+    check(B.named() + (B.counted()) as str == "beta2", "trait method composition")
 
     summary()
 }

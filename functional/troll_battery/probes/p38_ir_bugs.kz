@@ -29,8 +29,8 @@ pub fun main(): void {
     val mixed = "val={n}, literal={{n}}"
     // {{n}} 正确转义为字面 {n}，而非插值
     // 用 char 拼接避免 {n} 被插值
-    val brace_open = cast('{').to(str)
-    val brace_close = cast('}').to(str)
+    val brace_open = '{' as str
+    val brace_close = '}' as str
     val expected = "val=42, literal=" + brace_open + "n" + brace_close
     check(mixed == expected, "mixed escape: {{n}} produces literal brace-n-brace")
 

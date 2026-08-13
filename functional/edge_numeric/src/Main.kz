@@ -197,16 +197,16 @@ fun main(): void {
     // ─── 8. 混合整数运算（显式 cast）───
     println("--- Mixed Arithmetic (cast) ---")
     val i32_v: i32 = 1000000i32
-    val i64_v: i64 = cast(i32_v).to(i64) * cast(i32_v).to(i64)
+    val i64_v: i64 = i32_v as i64 * i32_v as i64
     check(i64_v == 1000000000000i64, "i32->i64 promotion avoids overflow")
-    check(cast(42i8).to(i64) == 42i64, "widen i8 to i64")
-    check(cast(1000i32).to(i64) == 1000i64, "widen i32 to i64")
-    check(cast(127i8).to(i32) == 127, "widen i8 MAX to i32")
-    check(cast((-128i8)).to(i32) == -128, "widen i8 MIN to i32")
-    val mixed: i64 = cast(100i32).to(i64) + cast(200i32).to(i64)
+    check(42i8 as i64 == 42i64, "widen i8 to i64")
+    check(1000i32 as i64 == 1000i64, "widen i32 to i64")
+    check(127i8 as i32 == 127, "widen i8 MAX to i32")
+    check((-128i8) as i32 == -128, "widen i8 MIN to i32")
+    val mixed: i64 = 100i32 as i64 + 200i32 as i64
     check(mixed == 300i64, "cast in expression sum")
     // 链式 cast
-    check(cast(cast(65i32).to(i64)).to(i8) == 65i8, "chained i32->i64->i8")
+    check((65i32 as i64) as i8 == 65i8, "chained i32->i64->i8")
 
     // ─── 9. char 边界值 ───
     println("--- char ---")
@@ -214,22 +214,22 @@ fun main(): void {
     val c_zero: char = '0'
     val c_lower: char = 'z'
     check(c_a == 'A', "char A equality")
-    check(cast(c_a).to(i32) == 65, "char A to i32 = 65")
-    check(cast(c_zero).to(i32) == 48, "char 0 to i32 = 48")
-    check(cast(c_lower).to(i32) == 122, "char z to i32 = 122")
-    check(cast(65i32).to(char) == 'A', "i32 65 to char A")
+    check(c_a as i32 == 65, "char A to i32 = 65")
+    check(c_zero as i32 == 48, "char 0 to i32 = 48")
+    check(c_lower as i32 == 122, "char z to i32 = 122")
+    check(65i32 as char == 'A', "i32 65 to char A")
     // ASCII 范围边界
-    check(cast(' ').to(i32) == 32, "char space to i32 = 32")
-    check(cast('~').to(i32) == 126, "char tilde to i32 = 126")
+    check(' ' as i32 == 32, "char space to i32 = 32")
+    check('~' as i32 == 126, "char tilde to i32 = 126")
     // Unicode 字符
     val c_cjk: char = '你'
     check(c_cjk == '你', "unicode char 你 equality")
-    check(cast(c_cjk).to(i32) == 20320, "char 你 to i32 = 20320")
+    check(c_cjk as i32 == 20320, "char 你 to i32 = 20320")
     val c_euro: char = '€'
-    check(cast(c_euro).to(i32) == 8364, "char € to i32 = 8364")
-    // 空字符：'\0' 字面量可能不支持，用 cast(0i32).to(char) 构造
-    val c_null: char = cast(0i32).to(char)
-    check(cast(c_null).to(i32) == 0, "null char via cast(0) roundtrip = 0")
+    check(c_euro as i32 == 8364, "char € to i32 = 8364")
+    // 空字符：'\0' 字面量可能不支持，用 0i32 as char 构造
+    val c_null: char = 0i32 as char
+    check(c_null as i32 == 0, "null char via cast(0) roundtrip = 0")
 
     // ─── 10. bool 边缘 ───
     println("--- bool ---")
@@ -252,40 +252,40 @@ fun main(): void {
 
     // ─── 12. 有符号/无符号转换 ───
     println("--- Signed/Unsigned Conversion ---")
-    check(cast((-1i8)).to(u8) == 255u8, "i8 -1 to u8 = 255")
-    check(cast((-1i32)).to(u8) == 255u8, "i32 -1 to u8 = 255")
-    check(cast((-1i32)).to(u32) == 4294967295u32, "i32 -1 to u32 = MAX")
-    check(cast((-1i64)).to(u64) == 18446744073709551615u64, "i64 -1 to u64 = MAX")
-    check(cast(255u8).to(i8) == -1i8, "u8 255 to i8 = -1")
-    check(cast(200u8).to(i8) == -56i8, "u8 200 to i8 = -56")
-    check(cast(127u8).to(i8) == 127i8, "u8 127 to i8 = 127 (in range)")
+    check((-1i8) as u8 == 255u8, "i8 -1 to u8 = 255")
+    check((-1i32) as u8 == 255u8, "i32 -1 to u8 = 255")
+    check((-1i32) as u32 == 4294967295u32, "i32 -1 to u32 = MAX")
+    check((-1i64) as u64 == 18446744073709551615u64, "i64 -1 to u64 = MAX")
+    check(255u8 as i8 == -1i8, "u8 255 to i8 = -1")
+    check(200u8 as i8 == -56i8, "u8 200 to i8 = -56")
+    check(127u8 as i8 == 127i8, "u8 127 to i8 = 127 (in range)")
     // narrowing wrap
-    check(cast(300i32).to(i8) == 44i8, "i32 300 to i8 = 44 (wrap)")
-    check(cast(256i32).to(u8) == 0u8, "i32 256 to u8 = 0 (wrap)")
+    check(300i32 as i8 == 44i8, "i32 300 to i8 = 44 (wrap)")
+    check(256i32 as u8 == 0u8, "i32 256 to u8 = 0 (wrap)")
     // widening unsigned
-    check(cast(200u8).to(u16) == 200u16, "u8 200 to u16 = 200")
-    check(cast(200u8).to(u32) == 200u32, "u8 200 to u32 = 200")
+    check(200u8 as u16 == 200u16, "u8 200 to u16 = 200")
+    check(200u8 as u32 == 200u32, "u8 200 to u32 = 200")
 
     // ─── 13. 浮点 ↔ 整数截断（向零截断）───
     println("--- Float/Int Truncation ---")
-    check(cast(2.7f64).to(i32) == 2, "f64 2.7 -> i32 = 2 (trunc toward 0)")
-    check(cast((-2.7f64)).to(i32) == -2, "f64 -2.7 -> i32 = -2 (trunc toward 0)")
-    check(cast(2.0f64).to(i32) == 2, "f64 2.0 -> i32 = 2 (exact)")
-    check(cast(0.999f64).to(i32) == 0, "f64 0.999 -> i32 = 0")
-    check(cast((-0.999f64)).to(i32) == 0, "f64 -0.999 -> i32 = 0")
-    check(cast(3.14f64).to(i64) == 3i64, "f64 3.14 -> i64 = 3")
+    check(2.7f64 as i32 == 2, "f64 2.7 -> i32 = 2 (trunc toward 0)")
+    check((-2.7f64) as i32 == -2, "f64 -2.7 -> i32 = -2 (trunc toward 0)")
+    check(2.0f64 as i32 == 2, "f64 2.0 -> i32 = 2 (exact)")
+    check(0.999f64 as i32 == 0, "f64 0.999 -> i32 = 0")
+    check((-0.999f64) as i32 == 0, "f64 -0.999 -> i32 = 0")
+    check(3.14f64 as i64 == 3i64, "f64 3.14 -> i64 = 3")
 
     // ─── 14. i64 → f64 → i64 精度损失（> 2^53） ───
     println("--- i64/f64 Precision Loss ---")
     // 2^53 + 1 = 9007199254740993，f64 无法表示（最近表示为 9007199254740992.0）
     val precise: i64 = 9007199254740993i64
-    val lost: i64 = cast(cast(precise).to(f64)).to(i64)
+    val lost: i64 = (precise as f64) as i64
     check(lost == 9007199254740992i64, "i64 2^53+1 -> f64 -> i64 loses +1")
     // 2^53 可精确表示
     val exact53: i64 = 9007199254740992i64
-    check(cast(cast(exact53).to(f64)).to(i64) == exact53, "i64 2^53 exact in f64")
+    check((exact53 as f64) as i64 == exact53, "i64 2^53 exact in f64")
     // 小 i64 往返无损
-    check(cast(cast(123456789i64).to(f64)).to(i64) == 123456789i64, "small i64 roundtrip f64 exact")
+    check((123456789i64 as f64) as i64 == 123456789i64, "small i64 roundtrip f64 exact")
 
     // ─── 15. NaN 全比较矩阵 ───
     println("--- NaN Comparison Matrix ---")
@@ -339,8 +339,8 @@ fun main(): void {
     println("--- f32/f64 Narrowing ---")
     // f64 -> f32 会丢失精度
     val wide_pi: f64 = 3.141592653589793f64
-    val narrow_pi: f32 = cast(wide_pi).to(f32)
-    val back: f64 = cast(narrow_pi).to(f64)
+    val narrow_pi: f32 = wide_pi as f32
+    val back: f64 = narrow_pi as f64
     check(back != wide_pi, "f64 pi -> f32 -> f64 loses precision")
     check(back == 3.1415927410125732f64, "f32 pi roundtrips as f64")  // f32 最接近 π 的值回绕到 f64 的精确值
 

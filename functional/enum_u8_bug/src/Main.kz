@@ -3,12 +3,12 @@ fun main(): void {
     val b: u8 = 0x62u8  // 'b' = 98
 
     // 直接比较
-    println("b=" + cast(b).to(str))
-    println("b == 0x62: " + cast(b == 0x62u8).to(str))
-    println("b == 0x61: " + cast(b == 0x61u8).to(str))
-    println("b == 0x09: " + cast(b == 0x09u8).to(str))
-    println("b == 98: " + cast(b == 98u8).to(str))
-    println("b == 9: " + cast(b == 9u8).to(str))
+    println("b=" + b as str)
+    println("b == 0x62: " + (b == 0x62u8) as str)
+    println("b == 0x61: " + (b == 0x61u8) as str)
+    println("b == 0x09: " + (b == 0x09u8) as str)
+    println("b == 98: " + (b == 98u8) as str)
+    println("b == 9: " + (b == 9u8) as str)
 
     // 测试 match
     match b {
@@ -29,7 +29,7 @@ fun main(): void {
     // 测试其他值
     val t: u8 = 0x09u8  // tab = 9
     println("")
-    println("t=" + cast(t).to(str))
+    println("t=" + t as str)
     match t {
         0x62u8 => println("t matched 0x62 (BUG!)"),
         0x09u8 => println("t matched 0x09 (correct)"),

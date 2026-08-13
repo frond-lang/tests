@@ -222,10 +222,10 @@ fun main(): void {
     // ─── 17. nullable 与 cast ───
     println("--- Nullable + Cast ---")
     val nc1: i32? = 65
-    check(cast(nc1 ?? 0).to(str) == "65", "cast nullable ?? 0 to str")
-    check(cast(nc1 ?? 0).to(i64) == 65i64, "cast nullable to i64")
+    check((nc1 ?? 0) as str == "65", "cast nullable ?? 0 to str")
+    check((nc1 ?? 0) as i64 == 65i64, "cast nullable to i64")
     val nc2: i32? = null
-    check(cast(nc2 ?? 0).to(str) == "0", "cast null ?? 0 to str")
+    check((nc2 ?? 0) as str == "0", "cast null ?? 0 to str")
 
     summary()
 }

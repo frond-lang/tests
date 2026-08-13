@@ -39,7 +39,7 @@ fun lifoBasic(): str {
 var capture_log: str = ""
 fun deferCaptureLocal(): i32 {
     var x: i32 = 5
-    defer capture_log = capture_log + cast(x).to(str)
+    defer capture_log = capture_log + x as str
     x = 10
     x
 }
@@ -47,7 +47,7 @@ fun deferCaptureLocal(): i32 {
 // ─── 3. defer 捕获函数参数（探测：是否读取为 null）───
 var param_log: str = ""
 fun deferCaptureParam(n: i32): i32 {
-    defer param_log = param_log + cast(n).to(str)
+    defer param_log = param_log + n as str
     n * 2
 }
 
@@ -62,7 +62,7 @@ fun deferModifiesOuter(): i32 {
 // ─── 5. defer 在递归中（每次递归调用是否都执行 defer？）───
 var recur_log: str = ""
 fun deferRecur(n: i32): i32 {
-    defer recur_log = recur_log + cast(n).to(str)
+    defer recur_log = recur_log + n as str
     if n <= 0 { 0 } else { n + deferRecur(n - 1) }
 }
 
@@ -70,7 +70,7 @@ fun deferRecur(n: i32): i32 {
 var nested_log: str = ""
 fun deferNestedFunc(): i32 {
     fun inner(x: i32): i32 {
-        defer nested_log = nested_log + "inner" + cast(x).to(str)
+        defer nested_log = nested_log + "inner" + x as str
         x * 2
     }
     defer nested_log = nested_log + "outer"
@@ -113,12 +113,12 @@ fun chainCaller(): i32 {
 var closure_log: str = ""
 fun deferWithClosure(): i32 {
     var x: i32 = 0
-    val f = fun() { x = x + 1 }
-    defer closure_log = closure_log + "defer" + cast(x).to(str)
+    val f = fun(): void { x = x + 1 }
+    defer closure_log = closure_log + "defer" + x as str
     f()
     f()
     f()
-    closure_log = closure_log + "after" + cast(x).to(str)
+    closure_log = closure_log + "after" + x as str
     x
 }
 
@@ -154,7 +154,7 @@ fun deferStress(): i32 {
 // ─── 13. defer 中调用函数（副作用）───
 var call_log: str = ""
 fun sideEffect(n: i32): i32 {
-    call_log = call_log + cast(n).to(str)
+    call_log = call_log + n as str
     n
 }
 fun deferCallsFunction(): i32 {
@@ -171,7 +171,7 @@ fun deferInLoop(): i32 {
     var i: i32 = 0
     var sum: i32 = 0
     while i < 3 {
-        defer loop_log = loop_log + cast(i).to(str)
+        defer loop_log = loop_log + i as str
         sum = sum + i
         i = i + 1
     }

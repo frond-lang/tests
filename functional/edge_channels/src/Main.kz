@@ -89,7 +89,7 @@ fun main(): void {
     val chf32 = channel<f32>(1)
     chf32.send(3.14)
     val rf32 = chf32.recv()
-    // Bug #51 已修复：cast(f32).to(f64) 现已正常工作，此处直接比较 f32 值
+    // Bug #51 已修复：f32 as f64 现已正常工作，此处直接比较 f32 值
     check(rf32 == 3.14, "f32 pi recv equals sent")
     val chf64 = channel<f64>(1)
     chf64.send(3.141592653589793f64)

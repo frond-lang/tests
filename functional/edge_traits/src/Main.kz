@@ -51,7 +51,7 @@ trait Counter {
 trait Shape {
     fun area(): f64
     fun describe(): str {
-        "shape area=" + cast(area()).to(str)
+        "shape area=" + (area()) as str
     }
 }
 
@@ -70,7 +70,7 @@ type TagA: Chain = TagA(label: str) {
 
 type TagB: Chain = TagB(num: i32) {
     fun base(): str {
-        cast(num).to(str)
+        num as str
     }
 }
 
@@ -279,12 +279,12 @@ fun main(): void {
 
     // ─── 9. trait 方法与 cast 组合 ───
     println("--- Trait Method + Cast ---")
-    val n_area = cast(circle.area()).to(i32)
+    val n_area = (circle.area()) as i32
     check(n_area == 12, "cast trait area to i32")
-    val area_str = cast(rect.area()).to(str)
+    val area_str = (rect.area()) as str
     check(area_str == "12", "cast trait area to str")
     // trait 方法返回值作为 cast 输入
-    val desc_len = cast(circle.describe()).to(str)
+    val desc_len = (circle.describe()) as str
     check(desc_len.len() > 0, "describe() result string non-empty")
 
     // ─── 10. trait 方法链式（同类型多次调用）───

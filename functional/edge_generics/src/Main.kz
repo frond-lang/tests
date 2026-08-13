@@ -90,7 +90,7 @@ fun gmax3<T>(a: T, b: T, c: T): T {
 
 // 7. 泛型 + cast
 fun toStr<T>(x: T): str {
-    cast(x).to(str)
+    x as str
 }
 
 fun main(): void {

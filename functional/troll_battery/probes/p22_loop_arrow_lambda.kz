@@ -76,28 +76,28 @@ pub fun main(): void {
 
     // ── arrow lambda ──
     println("--- Arrow Lambda ---")
-    val doubled = apply((n) => n * 2, 21)
+    val doubled = apply(fun(n: i32): i32 { n * 2 }, 21)
     check(doubled == 42, "arrow lambda: single param")
 
-    val added = apply2((a: i32, b: i32) => a + b, 3, 4)
+    val added = apply2(fun(a: i32, b: i32): i32 { a + b }, 3, 4)
     check(added == 7, "arrow lambda: two params")
 
     // 无参数 arrow lambda — 探测：() => expr 是否支持
     // 注：() 被解析为 unit 值，不是空参数列表。改用 fun() body
-    val getter = fun() { 99i32 }
+    val getter = fun(): i32 { 99i32 }
     check(getter() == 99, "arrow lambda: no params (via fun)")
 
     // arrow lambda 捕获外部变量
     val base = 100i32
-    val capturer = (n: i32) => base + n
+    val capturer = fun(n: i32): i32 { base + n }
     check(capturer(5) == 105, "arrow lambda: capture")
 
     // arrow lambda 链式
-    val chain = apply((x) => apply((y) => y * 3, x), 5)
+    val chain = apply(fun(x: i32): i32 { apply(fun(y: i32): i32 { y * 3 }, x) }, 5)
     check(chain == 15, "arrow lambda: nested call")
 
     // arrow lambda 复合表达式
-    val complex = apply((n) => {
+    val complex = apply(fun(n: i32): i32 {
         val sq = n * n
         sq + 1
     }, 5)

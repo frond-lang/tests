@@ -69,16 +69,16 @@ fun main(): void {
 
     val r1 = test_while_str()
     println("test_while_str: \"" + r1 + "\" (expected: XaXaXaXa, len=8)")
-    println("  len=" + cast(r1.bytes().len()).to(str))
+    println("  len=" + (r1.bytes().len()) as str)
 
     val r2 = test_while_if_str()
     println("test_while_if_str: \"" + r2 + "\" (expected: XaXaXaXb, len=8)")
-    println("  len=" + cast(r2.bytes().len()).to(str))
+    println("  len=" + (r2.bytes().len()) as str)
 
     val r3 = test_while_if_i32()
-    println("test_while_if_i32: " + cast(r3).to(str) + " (expected: 45)")
+    println("test_while_if_i32: " + r3 as str + " (expected: 45)")
 
     val r4 = test_while_if_str_concat()
     println("test_while_if_str_concat: \"" + r4 + "\" (expected: SMLMLM~~, len=9)")
-    println("  len=" + cast(r4.bytes().len()).to(str))
+    println("  len=" + (r4.bytes().len()) as str)
 }

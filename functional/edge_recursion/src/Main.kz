@@ -364,12 +364,12 @@ fun main(): void {
 
     // ─── 19. 递归与 cast 组合 ───
     println("--- Recursion + Cast Combination ---")
-    val fib_cast_i = cast(fib(10)).to(i64)
-    check(fib_cast_i == 55i64, "cast(fib(10)).to(i64) = 55")
-    val fib_cast_f = cast(fib(10)).to(f64)
-    check(fib_cast_f == 55.0f64, "cast(fib(10)).to(f64) = 55.0")
-    val fact_cast = cast(fact(5i64)).to(i32)
-    check(fact_cast == 120, "cast(fact(5)).to(i32) = 120")
+    val fib_cast_i = (fib(10)) as i64
+    check(fib_cast_i == 55i64, "(fib(10)) as i64 = 55")
+    val fib_cast_f = (fib(10)) as f64
+    check(fib_cast_f == 55.0f64, "(fib(10)) as f64 = 55.0")
+    val fact_cast = (fact(5i64)) as i32
+    check(fact_cast == 120, "(fact(5)) as i32 = 120")
 
     // ─── 20. 大胆：递归结果累积到外部 var ───
     println("--- Recursion Accumulating to Outer var ---")

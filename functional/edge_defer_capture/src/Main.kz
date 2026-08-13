@@ -1,0 +1,114 @@
+// ── Unified capture model verification ──
+// Exercises defer + nested functions + local variables together, verifying
+// that the by-val (Snapshot) / by-ref (Reference) capture modes are consistent
+// across all three nested-scope kinds.
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+
+fun summary(): void {
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// ─── 1. defer reads latest var value (Reference mode) ───
+var t1_log: str = ""
+fun deferReadsLatestVar(): i32 {
+    var x: i32 = 5
+    defer t1_log = t1_log + x as str
+    x = 10
+    x
+}
+
+// ─── 2. closure captures val as snapshot (Snapshot mode) ───
+type IntFn = () -> i32
+fun makeSnap(): IntFn {
+    val snap: i32 = 42
+    fun(): i32 { snap }
+}
+fun closureSnapshotsVal(): i32 {
+    val f = makeSnap()
+    // f captured snap's declaration-time value (42)
+    f()
+}
+
+// ─── 3. closure + defer reference the same var consistently ───
+var t3_log: str = ""
+fun closureAndDeferSameVar(): i32 {
+    var counter: i32 = 0
+    var inc: IntFn = fun(): i32 { counter = counter + 1; counter }
+    defer t3_log = t3_log + counter as str
+    val a = inc()
+    val b = inc()
+    // defer should see the latest counter (2), not the snapshot at defer-site (0)
+    counter
+}
+
+// ─── 4. nested function + defer + loop var ───
+var t4_log: str = ""
+fun nestedFunDeferLoop(): void {
+    fun inner(): void {
+        var local: i32 = 100
+        for i in 1i64..4i64 {
+            defer t4_log = t4_log + i as str + ","
+            local = local + i as i32
+        }
+        defer t4_log = t4_log + "end=" + local as str
+    }
+    inner()
+}
+
+// ─── 5. defer + nested function in a method body (implicit this field) ───
+type Counter = Counter(value: i32) {
+    fun bump(): i32 {
+        var result: i32 = 0
+        // nested function referencing the implicit-this field `value`
+        var getter: () -> i32 = fun(): i32 { value }
+        defer result = result + getter()
+        result = result + 1
+        result
+    }
+}
+
+fun main(): void {
+    println("=== Unified Capture Model ===")
+
+    println("--- 1. defer reads latest var ---")
+    t1_log = ""
+    val r1 = deferReadsLatestVar()
+    println("  INFO: t1_log='{t1_log}' (expect '10'), return={r1}")
+    check(t1_log == "10", "defer reads latest var value (10)")
+
+    println("--- 2. closure snapshots val ---")
+    val r2 = closureSnapshotsVal()
+    println("  INFO: f()={r2} (expect 42)")
+    check(r2 == 42, "closure captures val as snapshot (42)")
+
+    println("--- 3. closure + defer same var ---")
+    t3_log = ""
+    val r3 = closureAndDeferSameVar()
+    println("  INFO: t3_log='{t3_log}' (expect '2'), return={r3}")
+    check(t3_log == "2", "defer sees closure-modified var (2)")
+    check(r3 == 2, "closure increments var to 2")
+
+    println("--- 4. nested fun + defer + loop ---")
+    t4_log = ""
+    nestedFunDeferLoop()
+    println("  INFO: t4_log='{t4_log}'")
+    // LIFO defer: loop defers run 3,2,1 then the end defer
+    check(t4_log == "3,2,1,end=106", "nested-fun defer-in-loop LIFO + accumulator")
+
+    println("--- 5. method nested function + defer reads field ---")
+    val c = Counter(5)
+    val r5 = c.bump()
+    println("  INFO: bump()={r5} (expect 1: pre-defer value)")
+    // result = 1, then defer runs result = result + getter() at exit
+    // bump returns the pre-defer value (1)
+    check(r5 == 1, "method returns pre-defer value (1)")
+
+    summary()
+}

@@ -92,7 +92,7 @@ fun useRisky(b: bool): Throw<i32, Error> {
 fun lookup(id: i32): Throw<str, Error> {
     if id < 0 { throw UserNotFound("negative id") }
     if id == 0 { throw Timeout("timed out") }
-    Ok("user-" + cast(id).to(str))
+    Ok("user-" + id as str)
 }
 
 // ─── 7. throw + defer 交互：throw 时 defer 仍应执行 ───
@@ -138,7 +138,7 @@ fun chained(a: i32): Throw<i32, Error> {
 fun loopThrow(n: i32): Throw<i32, Error> {
     var i: i32 = 0
     while i < 10 {
-        if i == n { throw Error("hit " + cast(i).to(str)) }
+        if i == n { throw Error("hit " + i as str) }
         i = i + 1
     }
     Ok(i)

@@ -1,0 +1,83 @@
+// reflect functional test — verifies the Go-style reflect API:
+//   - trait Type methods: type_name / kind / size / alignment / field_count / field_name
+//   - trait Value methods: format / constructor
+//   - builtin array .len() (not a reflect method — already builtin)
+//
+// Every value gets reflect methods via structural auto-impl (no explicit trait declaration).
+// Note: in Kuzo, `type Point = Point(x: i32, y: i32)` is a single-constructor ADT
+// (kind == "Adt"), not a record literal.
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+type Point = Point(x: i32, y: i32)
+
+type Shape =
+    | Circle(f64)
+    | Rect(i32, i32)
+    | Empty
+
+fun main(): void {
+    // ── trait Type: type metadata ────────────────────────────────────
+    val p = Point(3, 4)
+
+    check(p.type_name() == "Point", "Point type_name()")
+    check(p.kind() == "Adt", "Point kind() == Adt")
+    check(p.field_count() == 2, "Point field_count() == 2")
+    check(p.field_name(0) == "x", "Point field_name(0) == x")
+    check(p.field_name(1) == "y", "Point field_name(1) == y")
+    check(p.size() == 8, "Point size() == 8 (two i32)")
+    check(p.alignment() == 4, "Point alignment() == 4")
+
+    // ── trait Value: value operations ───────────────────────────────
+    check(p.format() == "Point(x: 3, y: 4)", "Point format()")
+
+    // ── scalar types also get reflect methods ───────────────────────
+    val n: i32 = 42
+    check(n.type_name() == "i32", "i32 type_name()")
+    check(n.kind() == "Primitive", "i32 kind() == Primitive")
+    check(n.format() == "42", "i32 format()")
+
+    // ── str type ────────────────────────────────────────────────────
+    val s = "hello"
+    check(s.type_name() == "str", "str type_name()")
+    check(s.kind() == "Str", "str kind() == Str")
+
+    // ── ADT: constructor ────────────────────────────────────────────
+    val c = Shape.Circle(2.0)
+    check(c.type_name() == "Shape", "ADT type_name()")
+    check(c.constructor() == "Circle", "ADT constructor() == Circle")
+    check(c.kind() == "Adt", "ADT kind() == Adt")
+    check(c.format() == "Circle(2)", "ADT format()")
+
+    val e = Shape.Empty
+    check(e.constructor() == "Empty", "ADT Empty constructor()")
+    check(e.format() == "Empty", "ADT Empty format()")
+
+    // ── array: builtin len() (NOT a reflect method) ─────────────────
+    val arr: i32[] = [10, 20, 30]
+    check(arr.kind() == "Array", "array kind() == Array")
+    check(arr.len() == 3, "array len() == 3 (builtin)")
+
+    // ── println uses format internally (regression check) ───────────
+    println("debug: {p}")
+
+    summary()
+}
