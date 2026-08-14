@@ -1,0 +1,123 @@
+// 功能验证：this/super 统一系统 + override 语义化 + 多 trait 委托消歧
+//
+// this = 从派发顶端动态找（类型自身 → trait 默认）
+// super = 静态指向本类型上该方法绑定的 trait 默认层
+// 多 trait 同名冲突在声明点用 `= Trait.m` 绑定解决
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// ── 1. 默认继承：什么都不声明 → 继承唯一默认 ──
+trait Base1 {
+    fun tag(): str {
+        "base1"
+    }
+}
+type Inh: Base1 = | Inh
+
+// ── 2. override + super：在默认实现之上包装 ──
+trait Greeter {
+    fun greet(): str {
+        "hello"
+    }
+}
+type Wrapper: Greeter = | Wrapper {
+    override fun greet(): str {
+        "[" + super.greet() + "]"
+    }
+}
+
+// ── 3. 多 trait 同名默认 → 纯委托消歧（绑定到 A）──
+trait A {
+    fun m(): str { "A.m" }
+}
+trait B {
+    fun m(): str { "B.m" }
+}
+type PickA: (A, B) = | PickA {
+    fun m(): str = A.m
+}
+
+// ── 4. 绑定标注与方法体共存：override 并 super 到指定 trait ──
+type PickB: (A, B) = | PickB {
+    override fun m(): str = B.m {
+        super.m() + "!"
+    }
+}
+
+// ── 5. super 是层视图，可调用其他方法名（绕过 override 取默认）──
+trait Multi {
+    fun one(): str { "one" }
+    fun two(): str { "two" }
+}
+type MultiImp: Multi = | MultiImp {
+    override fun one(): str {
+        super.two() + "+one"
+    }
+    override fun two(): str {
+        "TWO"
+    }
+}
+
+// ── 6. this 向下穿透：默认方法内调 this.m() 命中 override（模板方法）──
+trait Template {
+    fun label(): str {
+        "tpl:" + render()
+    }
+    fun render(): str
+}
+type TplImp: Template = TplImp(body: str) {
+    fun render(): str {
+        body
+    }
+}
+
+// ── 7. 冲突下显式 override：一个实现满足两个 trait ──
+type OwnM: (A, B) = | OwnM {
+    override fun m(): str { "own" }
+}
+
+// ── 8. 记录类型 + super ──
+type Loud: Greeter = Loud(name: str) {
+    override fun greet(): str {
+        super.greet() + " " + name
+    }
+}
+
+fun main(): void {
+    println("=== super / delegate / override ===")
+
+    check(Inh.tag() == "base1", "default inherited without declaration")
+
+    check(Wrapper.greet() == "[hello]", "override wraps default via super")
+
+    check(PickA.m() == "A.m", "delegate resolves conflict to A")
+    check(PickB.m() == "B.m!", "binding annotation + body + super")
+
+    check(MultiImp.one() == "two+one", "super calls sibling method default")
+    check(MultiImp.two() == "TWO", "own override wins normal dispatch")
+
+    check(TplImp("R").label() == "tpl:R", "default dispatches down to override via this")
+
+    check(OwnM.m() == "own", "explicit override satisfies both traits")
+
+    check(Loud("kuzo").greet() == "hello kuzo", "record type super call")
+
+    summary()
+}
