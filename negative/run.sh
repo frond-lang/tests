@@ -3,19 +3,19 @@
 set -u
 cd "$(dirname "$0")"
 
-KUZO="${KUZO:-}"
-if [ -z "$KUZO" ]; then
+FROND="${FROND:-}"
+if [ -z "$FROND" ]; then
     # Resolve an absolute path before any cd — the per-case runs execute in a temp dir.
-    KUZO="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/kuzo.exe"
+    FROND="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/frond.exe"
 fi
-if [ ! -f "$KUZO" ]; then
-    echo "kuzo binary not found at $KUZO (build first or set KUZO env var)" >&2
+if [ ! -f "$FROND" ]; then
+    echo "frond binary not found at $FROND (build first or set FROND env var)" >&2
     exit 2
 fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-printf '[package]\nname = "neg"\nentry = "src/Main.kz"\n\n[build]\noutput_dir = "out"\nopt_level = 2\n' > "$tmp/kuzo.toml"
+printf '[package]\nname = "neg"\nentry = "src/Main.kz"\n\n[build]\noutput_dir = "out"\nopt_level = 2\n' > "$tmp/frond.toml"
 mkdir -p "$tmp/src"
 
 pass=0
@@ -28,7 +28,7 @@ for case_file in cases/*.kz; do
         continue
     fi
     cp "$case_file" "$tmp/src/Main.kz"
-    out="$(cd "$tmp" && timeout 60 "$KUZO" run 2>&1)"
+    out="$(cd "$tmp" && timeout 60 "$FROND" run 2>&1)"
     ec=$?
     if [ $ec -eq 0 ]; then
         echo "FAIL: $name — compiled successfully (expected failure)"

@@ -5,12 +5,12 @@
 set -u
 cd "$(dirname "$0")"
 
-KUZO="${KUZO:-}"
-if [ -z "$KUZO" ]; then
-    KUZO="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/kuzo.exe"
+FROND="${FROND:-}"
+if [ -z "$FROND" ]; then
+    FROND="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/frond.exe"
 fi
-if [ ! -f "$KUZO" ]; then
-    echo "kuzo binary not found at $KUZO (build first or set KUZO env var)" >&2
+if [ ! -f "$FROND" ]; then
+    echo "frond binary not found at $FROND (build first or set FROND env var)" >&2
     exit 2
 fi
 
@@ -26,7 +26,7 @@ for dir in ../perf/*/; do
     # 收集每次运行的全部 "elapsed: N ms" 行（多段计时按出现顺序配对取中位）
     runs=()
     for i in $(seq 1 "$N"); do
-        out="$(cd "$dir" && timeout 600 "$KUZO" run 2>&1)"
+        out="$(cd "$dir" && timeout 600 "$FROND" run 2>&1)"
         if [ $? -ne 0 ]; then
             echo "ERROR: $name run #$i failed"
             continue

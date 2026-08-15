@@ -14,12 +14,12 @@
 set -u
 cd "$(dirname "$0")"
 
-KUZO="${KUZO:-}"
-if [ -z "$KUZO" ]; then
-    KUZO="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/kuzo.exe"
+FROND="${FROND:-}"
+if [ -z "$FROND" ]; then
+    FROND="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/frond.exe"
 fi
-if [ ! -f "$KUZO" ]; then
-    echo "kuzo binary not found at $KUZO (build first or set KUZO env var)" >&2
+if [ ! -f "$FROND" ]; then
+    echo "frond binary not found at $FROND (build first or set FROND env var)" >&2
     exit 2
 fi
 
@@ -36,7 +36,7 @@ trap 'rm -rf "$tmp"' EXIT
 for dir in ../functional/*/; do
     # </dev/null: Tty-reading suites must not block on an interactive stdin
     # (same reason run_functional.sh's command substitution is safe).
-    out="$(cd "$dir" && KUZO_EXEC_COVERAGE=1 timeout 300 "$KUZO" run </dev/null 2>&1)"
+    out="$(cd "$dir" && FROND_EXEC_COVERAGE=1 timeout 300 "$FROND" run </dev/null 2>&1)"
     echo "$out" | grep '^EXECCOV-INV ' | sed 's/^EXECCOV-INV //' >> "$tmp/inv.txt"
     echo "$out" | grep '^EXECCOV-RUN ' | sed 's/^EXECCOV-RUN //' >> "$tmp/run.txt"
 done

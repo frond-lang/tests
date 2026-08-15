@@ -1,4 +1,4 @@
-# Kuzo 引擎 Bug 修复追踪
+# Frond 引擎 Bug 修复追踪
 
 > 本文档由 `test-suite/` 测试套件发现，记录所有引擎 bug 的修复优先级与临时绕过方案。
 > 最后更新：2026-08-08（#1-#17 已修复；执行器审查 H1-H5、M1-M9、L1-L12 已修复；边缘测试 #18-#55 中 #18/#19/#20/#21/#22/#23/#24/#25/#26/#27/#28/#29/#30/#31/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55 已修复；P0/P1 审查修复 R1-R11 已完成；#56 match arm effect 泄漏已修复；#57 non_tail_rec_to_loop 破坏 defer LIFO 已修复）；2026-08-14 主动探测发现 #86-#93 并已全部修复（f128 转换/除法、移位优先级、语句边界、缺尾表达式、lambda return 作用域、range 运算符复活、for-in 裸 str 挂起），新增套件 cast_f128/precedence/stmt_boundary/missing_return/ranges 与 tests/negative 负向 harness（15 用例）；dogfood 真实程序（JSON 解析器）发现并修复 #97 尾传播丢 Ok 包装 / #98 错误臂构造器失配 / #99 LICM 外提别名读+字段写无序 / #100 嵌套循环调度活锁（新增 loop_nesting 套件 + dogfood_json 套件,残留边角已于同日第三批全部修复,另发现并修复 #101 带转义字符串 UTF-8 双重编码）；同日混合扫描发现并修复 #95 复合赋值绕过严格检查（i32+=f64 静默丢写）/#96 peer 字面量适配不写回 ExprInfo（大字面量 IR 溢出）/泛型 null-join（新增 mixed_types 套件 20 断言，负向增至 22）；同日补全类型后缀链（T?[] 全组合支持；T?? 字面写出改为报错拒绝——见"类型后缀链实现"节——并顺带修复 #94 同名函数重复定义静默通过）
@@ -188,7 +188,7 @@
   - 影响面：stdlib 中 BufReader.read_line、Dir 遍历、TcpStream.read_until 等大量方法在循环内写字段——**这些代码从未被任何测试运行过**（无 IO 测试），#99 一旦修复即是它们的首次正确性验证。
 - **已做的部分修复（保留）**：Assign.rs implicit-this 分支补接 effect 链（独立正确，缓解乱序）。
 - **修复方向**（下次专项）：(a) 排查循环体帧对 Value::Ref 的快照/重置是否深拷 record，改为共享 Arc；(b) 或将 implicit-this 字段写改为函数式更新 + 变量重绑（复用局部变量的 writeback/loop-carried 机制，该机制已被证明正确）。二选一需要与"迭代器尾递归模式必须继续工作"的语义对齐。
-- **dogfood_json 套件**：完整 JSON 解析器（~400 行，递归下降+转义+错误路径 36 断言）已就绪，kuzo.toml 改名 disabled 待 #99 修复后启用。#97/#98 修复使其中标量/错误路径用例已可通过；数组/对象解析因 #99 阻塞。
+- **dogfood_json 套件**：完整 JSON 解析器（~400 行，递归下降+转义+错误路径 36 断言）已就绪，frond.toml 改名 disabled 待 #99 修复后启用。#97/#98 修复使其中标量/错误路径用例已可通过；数组/对象解析因 #99 阻塞。
 
 ### Bug #99 修复 + Bug #100 修复（2026-08-14 续,dogfood_json 追踪）
 
@@ -202,11 +202,11 @@
 3. Builder 新增 var_home(变量名→(规范槽,是否函数级声明));compile_while_subgraph 在编译条件前 `rebind_modified_vars_to_home`——循环体中赋值的**函数级**变量在条件中改读规范槽（writeback 的目标槽,每轮迭代被更新）。收集器不递归嵌套循环（内层循环自己的条件在内层注册时处理）。
 4. var_home 按函数进出保存/清空（防跨函数污染——曾把 stdlib 函数里的同名变量 home 写进用户函数的 writeback 目标）。
 
-**诊断技巧**：event loop stuck(guard=2亿)= 活锁而非饿死;在 process_frame 按 frame 计数、护栏触发时 dump top 帧,直接看到哪个帧被处理上亿次（While 帧 suspended、其 LoopBody 完成三千万次 → 无限迭代而非死等）。KUZO_DEBUG_WB=1 可追踪 WriteBack 落点。
+**诊断技巧**：event loop stuck(guard=2亿)= 活锁而非饿死;在 process_frame 按 frame 计数、护栏触发时 dump top 帧,直接看到哪个帧被处理上亿次（While 帧 suspended、其 LoopBody 完成三千万次 → 无限迭代而非死等）。FROND_DEBUG_WB=1 可追踪 WriteBack 落点。
 
 **#100 残留边角（已表征,未修）**：
 - 负指数（"25e-2"→25）：str_to_f64 中跨迭代绑定读落后一轮（exp 段 if 读到上一轮的 i）,确定性非竞态。
-- edge_stress 冒泡排序 2 断言：rebind 与前置循环上下文（万次循环+千元素数组构建之后的嵌套循环）交互;KUZO_NO_REBIND=1 时通过但 #100 形状回归。环境开关：KUZO_NO_REBIND / KUZO_NO_REUSECHAIN。
+- edge_stress 冒泡排序 2 断言：rebind 与前置循环上下文（万次循环+千元素数组构建之后的嵌套循环）交互;FROND_NO_REBIND=1 时通过但 #100 形状回归。环境开关：FROND_NO_REBIND / FROND_NO_REUSECHAIN。
 - dogfood_json 中 utf-8 多字节段/嵌套数组 nullable 方法调用断言:暂从套件移除,待上述边角修复后恢复。
 
 **验证**：loop_nesting 套件（#99 三形状 4/4/31 + #100 三形状）7 断言 ALL PASSED;dogfood_json 36 断言 ALL PASSED;全量 2413 断言 + 负向 22 通过（仅 edge_stress 上述 2 断言失败）;debug 构建无 panic。
@@ -330,7 +330,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：使用 `i32` 变量作为数组索引时，返回 `<non-scalar>` 而非元素值
 - **复现代码**：
-  ```kuzo
+  ```frond
   val arr = [10, 20, 30, 40]
   var i: i32 = 0
   println(arr[i])  // <non-scalar>（应为 10）
@@ -347,7 +347,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：数组 `.len()` 方法返回 `void` 而非长度值
 - **复现代码**：
-  ```kuzo
+  ```frond
   val arr = [1, 2, 3]
   println(arr.len())  // void（应为 3）
   ```
@@ -361,7 +361,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`defer` 块中的代码不执行，LIFO 顺序无效
 - **复现代码**：
-  ```kuzo
+  ```frond
   var log: str = ""
   fun lifo(): void {
       defer log = log + "A"
@@ -381,7 +381,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`match` 模式匹配 newtype 时，分支体不执行，函数返回 `void`
 - **复现代码**：
-  ```kuzo
+  ```frond
   type Meters = Meters(f64)
   fun areaM(m: Meters): f64 {
       match m {
@@ -403,7 +403,7 @@
 - **发现场景**：控制流边缘测试中，`return` 语句在 `if` 块内使用时导致程序挂起
 - **现象**：函数体中使用 `return n;` 语法时，调用该函数后程序静默退出（无 panic、无输出、EXIT=0），后续代码不执行
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun withReturn(n: i32): i32 {
       if n < 2 { return n }
       n
@@ -426,7 +426,7 @@
 - **现象**：`1e300` 解析为 `1.0`，`1.5e10` 解析为 `1.5`，`1.7976931348623157e308` 解析为 `1.7976931348623157`——指数部分（`e`/`E` 后的数字）被完全丢弃
 - **精细化（2026-08-07 edge_misc 复测）**：仅在**无类型后缀**时触发；带 `f64` 后缀（`1e300f64`、`1.5e10f64`、`1e-5f64`）解析完全正确。推测无后缀字面量走默认推断路径，该路径未处理 `e<exp>`；带后缀字面量走浮点专用解析路径，已正确处理指数。注意：与 Bug #42 形成对称——后缀帮助浮点字面量解析，但破坏 match 模式中的 f64 字面量。
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val sci: f64 = 1e300
       println(sci)       // 输出 1（应为 1e300）
@@ -445,7 +445,7 @@
 - **发现场景**：edge_async 测试中，`channel.recv()` 在 while 循环内导致 event loop stuck；进一步测试发现 await 节点在 if 分支内也卡住
 - **现象**：`channel.recv()`、`Timer(n).await()`、`asyncFn().await()` 等 await 操作在 `if` 分支或 `while`/`loop` 循环体内执行时，event loop 无限循环直到 `loop_guard=200000001` 触发 panic（`event loop stuck`）。函数顶层（不在任何分支子图内）的 await 正常工作
 - **复现代码（while 循环）**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val lch = channel<i32>(20)
       lch.send(42)
@@ -457,7 +457,7 @@
   }
   ```
 - **复现代码（if 分支）**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val lch = channel<i32>(20)
       lch.send(42)
@@ -467,7 +467,7 @@
   }
   ```
 - **正常工作（函数顶层）**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val lch = channel<i32>(20)
       lch.send(42)
@@ -485,7 +485,7 @@
 - **发现场景**：control_flow 测试中，`while i < 10 && found == -1` 导致 event loop stuck
 - **现象**：`&&`（逻辑与）或 `||`（逻辑或）运算符出现在 `while` 循环的条件表达式中时，event loop 无限循环直到 `loop_guard=200000001` 触发 panic（`event loop stuck`）。同样的 `&&`/`||` 在 `if` 条件中正常工作
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       var i: i32 = 0
       while i < 10 && i < 5 {   // 卡住
@@ -503,7 +503,7 @@
 - **状态**：已修复 (2026-08-07)
 - **发现场景**：closures 边缘测试中，`a → b → c` 三层闭包链调用时，只有最内层闭包 `c` 的修改可见
 - **现象**：多个闭包捕获同一 `var`，并通过闭包间相互调用（A 调 B 调 C）修改该 var 时，只有最后一次调用的修改可见——前面所有闭包体的修改被"覆盖丢失"。具体表现为：
-  ```kuzo
+  ```frond
   var log: str = ""
   val c = fun() { log = log + "C" }
   val b = fun() { log = log + "B"; c() }
@@ -526,7 +526,7 @@
 - **发现场景**：edge_throw 测试中，`throw` 在 `while` 循环体内执行后，函数返回 `Ok` 而非 `Error`
 - **现象**：顶层函数中 `while` 循环体内的 `throw` 语句不传播错误，函数正常返回 `Ok(...)`，throw 被静默吞掉。对比：`if` 分支内 throw 正常传播（throwInMatch 用例通过）；函数顶层 throw 正常传播
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun loopThrow(n: i32): Throw<i32, Error> {
       var i: i32 = 0
       while i < 10 {
@@ -551,7 +551,7 @@
 - **发现场景**：control_flow 测试中，`while isDone(fci) == false { ... }` 导致程序无输出挂起（event loop stuck）
 - **现象**：在 `while` 循环条件中调用任何用户定义的函数（无论顶层 `fun` 还是嵌套 `fun`），引擎挂起无输出、不 panic、不退出。intrinsic 方法（如 `arr.len()`）在 while 条件中正常工作
 - **复现代码**（最小）：
-  ```kuzo
+  ```frond
   fun isDoneTop(n: i32): bool { n >= 5 }
   fun main(): void {
       var a: i32 = 0
@@ -585,7 +585,7 @@
   1. `arr[i]()` 返回 void：闭包存入数组（通过 `arr ++ [fun() {...}]` 构建）后，`arr[i]()` 调用返回 `void`。直接调用闭包变量 `f()` 正常，仅"数组索引取闭包后立即调用"路径失效
   2. 循环体闭包捕获返回 null：在 while/for 循环体内创建闭包并捕获循环体局部变量（如 `val captured = i * i`），循环结束后调用闭包返回 `null`。根因是循环体帧在循环结束/迭代重置后销毁/清空，same_function 帧链路径从父帧读取 upvalue 时得到 null
 - **复现代码**：
-  ```kuzo
+  ```frond
   type IntFn = () -> i32
   fun main(): void {
       // 部分 1：arr[i]() 返回 void
@@ -620,7 +620,7 @@
 - **发现场景**：edge_closures 测试中，先使用闭包返回闭包的工厂（makeAdderFactory / mk_add），后续 `makeCounter()` 创建的计数器 `c_a()` 从 11 开始而非 1
 - **现象**：上下文相关。同一程序中，先执行"闭包返回闭包"的高阶工厂后，后续 `makeCounter()` 创建的独立计数器共享被污染的 Cell 状态——`c_a()` 第一次调用返回 11（应为 1），`c_b()` 返回 14（应为 1）。**对照**：edge_probe 中无前置高阶闭包工厂时，`makeCounter()` 的 `fresh()` 正确返回 1
 - **复现代码**：
-  ```kuzo
+  ```frond
   type IntFn = () -> i32
   fun makeAdderFactory(): () -> IntFn {
       val base: i32 = 100
@@ -674,7 +674,7 @@
   mf64_full(0.0) = null          ← 0.0f64 + guard + _ 全部失效
   ```
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun mf64_lit_suffix(x: f64): str {
       match x {
           0.0f64 => "zero"   // 带后缀的 f64 字面量模式 → 破坏整个 match
@@ -685,7 +685,7 @@
   // mf64_lit_suffix(5.0) == null（应为 "other"）
   ```
 - **对照（不带后缀正常）**：
-  ```kuzo
+  ```frond
   fun mf64_lit_nosuffix(x: f64): str {
       match x {
           0.0 => "zero"      // 无后缀 → 正常
@@ -705,7 +705,7 @@
 - **状态**：已修复 (2026-08-07)
 - **现象**：嵌套 if-else 表达式中，内层 else 分支若为直接递归调用（或包含直接递归调用的表达式），结果丢失为 null
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun powNested(base: i64, exp: i32): i64 {
       if exp == 0i32 {
           1i64
@@ -749,7 +749,7 @@
 - **修复**：新增 `init_defer_frame` 方法（Frame.rs），用父帧的 `node_offset` 和 `value_table.len()` 创建 defer 帧，复制父帧已就绪的值，再调用 `prepare_same_function_frame` 设置 pending_inputs。这使 defer 帧的布局与函数帧一致，WriteBack 的 `local` 索引正确落在 value_table 范围内。同时设置帧链指针（parent_frame_ptr/root_frame_ptr）支持帧链穿透访问外层变量。Schedule.rs 的正常完成路径和 Cancelling 路径都改用 `init_defer_frame`。
 - **验证**：debug 构建不再 panic；edge_defer `deferNoAffectReturn` 测试 PASS（defer 写局部变量 x=999 不影响返回值 5）；8/8 unit + 28/34 functional ALL PASSED + 5/5 perf PASS，无新回归
 - **复现代码**：
-  ```kuzo
+  ```frond
   var g: str = ""
   fun lifoBasic(): str {
       var log: str = "body|"
@@ -785,7 +785,7 @@
 - **状态**：已修复 (2026-08-07)
 - **现象**：负整数字面量（如 `-1`、`-100`）作为 `while`/`for` 循环体后的函数尾表达式时，函数返回 `void` 而非负数值；作为 `if` 语句后的尾表达式时返回 `0`；`(-1)` 带括号形式在循环后导致引擎 hang。正整数字面量、零、变量、减法表达式（`0 - 1`）均正常。
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun whileNeg(): i32 { var i: i32 = 0; while i < 1 { i = i + 1 }; -1 }       // → void
   fun whilePos(): i32 { var i: i32 = 0; while i < 1 { i = i + 1 }; 42 }       // → 42
   fun whileZero(): i32 { var i: i32 = 0; while i < 1 { i = i + 1 }; 0 }       // → 0
@@ -796,7 +796,7 @@
   fun retParenNeg(): i32 { var i: i32 = 0; while i < 1 { i = i + 1 }; (-1) } // → HANG
   ```
 - **影响**：所有在循环/if 后使用负数字面量作为返回值的函数（如查找失败返回 -1、错误码等常见模式）
-- **根因**（已确认）：Parser 层缺陷。Kuzo 词法器将 `;` 作为空白跳过，因此 `{ ... }; -1` 在 token 流中等价于 `{ ... } -1`。`parse_binary()` 在解析完 block/if/match 表达式后，会贪婪地消费后续的 `-` 作为二元减法运算符，将 `{ ... } - 1` 解析为 `Binary { op: Sub, lhs: Block, rhs: Literal(1) }`，而非将 `-1` 作为独立的一元取负尾表达式。由于 block 返回 void，`void - 1` 的计算结果为 void 或 0，导致函数返回错误值。
+- **根因**（已确认）：Parser 层缺陷。Frond 词法器将 `;` 作为空白跳过，因此 `{ ... }; -1` 在 token 流中等价于 `{ ... } -1`。`parse_binary()` 在解析完 block/if/match 表达式后，会贪婪地消费后续的 `-` 作为二元减法运算符，将 `{ ... } - 1` 解析为 `Binary { op: Sub, lhs: Block, rhs: Literal(1) }`，而非将 `-1` 作为独立的一元取负尾表达式。由于 block 返回 void，`void - 1` 的计算结果为 void 或 0，导致函数返回错误值。
   - `while` 循环后 `-1` → `{ ... } - 1` → void - 1 → void
   - `if` 语句后 `-1` → `{ ... } - 1` → void - 1 → 0
   - `0 - 1` 正常因为 `0` 不是 block/if/match，`-` 被正确解析为二元减法
@@ -820,7 +820,7 @@
   - `float * int` → 返回 0（如 `1.5 * 2` → 0）
   - `float / int` → inf（如 `10.0 / 2` → inf，2 截断为 0）
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       println("0 - 1.5 = {0 - 1.5}")   // → 0（应为 -1.5）
       println("1.5 + 1 = {1.5 + 1}")   // → 1.5（应为 2.5）
@@ -847,7 +847,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`p1 != p2` 始终返回 `false`，即使两者字段不同
 - **复现代码**：
-  ```kuzo
+  ```frond
   val p1 = Point(3, 4)
   val p3 = Point(5, 6)
   println(p1 != p3)      // false（应为 true）
@@ -866,7 +866,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：闭包内修改的 `var`，在外部用 `==` 与字面量比较时返回 `false`，即使值正确
 - **复现代码**：
-  ```kuzo
+  ```frond
   var y: i32 = 0
   val inc = fun() { y = y + 1 }
   inc(); inc(); inc()
@@ -883,7 +883,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`expr?` 传播运算符对 Nullable 类型不工作，null 时导致调用方函数提前终止
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun propagateOpt(x: i32?): i32? {
       val y = x?
       y + 1
@@ -905,7 +905,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：Trait 中定义的默认方法（有方法体的方法）在被调用时返回 `<non-scalar>`
 - **复现代码**：
-  ```kuzo
+  ```frond
   trait Greet {
       fun name(self): str
       fun hello(self): str {
@@ -933,7 +933,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：字符串与整数字面量拼接时，返回 `<non-scalar>` 而非拼接后的字符串
 - **复现代码**：
-  ```kuzo
+  ```frond
   println("" + 6)           // <non-scalar>（应为 "6"）
   println("result=" + 42)   // <non-scalar>（应为 "result=42"）
   ```
@@ -948,7 +948,7 @@
 - **发现场景**：闭包边缘测试中，在 `main` 内定义的嵌套函数递归调用自身时 panic
 - **现象**：在函数体内定义的嵌套函数，当函数体中递归调用自身时 panic
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       fun fib(n: i32): i32 {
           if n < 2 { n } else { fib(n - 1) + fib(n - 2) }
@@ -969,7 +969,7 @@
 - **发现场景**：位运算边缘测试中，超过 i32 范围的十六进制字面量导致程序静默退出
 - **现象**：当字面量值超过类型标注的范围（如 `0x80000000` 赋值给 `i32`）时，程序静默退出（无 panic、无编译错误、EXIT=0），后续代码不执行
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       println("start")              // 输出
       val big: i32 = 0x80000000     // 2147483648 > i32 MAX，静默退出
@@ -983,7 +983,7 @@
   2. 新增 `parse_int_to_i128`：解析整数字面量为 i128，语法错误时返回带 span 的 `Err`
   3. 新增 `check_int_range`：通过 `try_int!` 宏统一所有 12 种整数类型的范围检查，超出范围时返回带类型名、合法范围和 span 的 `Err`
   4. `compile_const_with_value` 匹配 `Err` 时将错误推入 `self.errors`，最终通过 `graph.ir_errors` 被 `main.rs` 捕获并以 exit code 1 退出
-  5. 同步修复 stdlib 中 4 个文件的大整数字面量问题：`Duration.kuzo`（3 处 i128 后缀）、`SystemTime.kuzo`（1 处 i128 后缀）、`Math.kuzo`（3 处改用 `1u32<<31`/`1u64<<63`/`1u128<<127` 位运算构造）
+  5. 同步修复 stdlib 中 4 个文件的大整数字面量问题：`Duration.frond`（3 处 i128 后缀）、`SystemTime.frond`（1 处 i128 后缀）、`Math.frond`（3 处改用 `1u32<<31`/`1u64<<63`/`1u128<<127` 位运算构造）
 - **验证结果**：
   - 复现用例 `bug21_repro`：输出 `IR error: integer literal '0x80000000' at line 5:20 is out of range for i32 (valid range: -2147483648..=2147483647)`，exit code 1
   - Rust 单元测试：8 passed; 0 failed
@@ -996,7 +996,7 @@
 - **发现场景**：闭包边缘测试中，使用 `type` 定义的函数类型别名与原始函数类型不被视为同一类型
 - **现象**：`type IntFn = () -> i32` 定义后，将闭包字面量赋值给 `IntFn` 类型的变量时报类型不匹配
 - **复现代码**：
-  ```kuzo
+  ```frond
   type IntFn = () -> i32
   fun main(): void {
       var rec: IntFn = fun() { 0 }    // type annotation mismatch: expected 'IntFn', found '() -> i32'
@@ -1019,7 +1019,7 @@
 - **状态**：已修复
 - **发现场景**：edge_generics 测试中，第一个 while 循环遍历 `val` 数组正常，后续 while 循环再次遍历同一数组时读到陈旧/错误值
 - **现象**：
-  ```kuzo
+  ```frond
   val arr = [1, 2, 3, 4, 5]
   // 第一个 while 循环遍历 arr：正常
   // 第二个 while 循环遍历 arr：arr[loopVar] 读到陈旧值
@@ -1053,7 +1053,7 @@
 - **发现场景**：edge_stress 冒泡排序测试中，`sort_arr[bsj] = sort_arr[bsj+1]` 不修改数组，排序完全失效
 - **现象**：对数组元素的索引赋值 `arr[i] = x` 是空操作——数组保持原值不变，赋值被静默丢弃。`arr[i] = x` 后读取 `arr[i]` 仍是旧值。对比：record 字段赋值 `r.field = x` 工作正常
 - **复现代码**：
-  ```kuzo
+  ```frond
   val a: i32[] = [10, 20, 30, 40, 50]
   a[0] = 99
   println(a[0])  // 10（应为 99）
@@ -1075,9 +1075,9 @@
 
 - **状态**：已修复 (2026-08-07)
 - **发现场景**：edge_operators 测试中，`false && scBump()` 后 `sc_count != 0`，表明 RHS 被求值
-- **现象**：Kuzo 的 `&&`（逻辑与）和 `||`（逻辑或）运算符不实现短路求值——无论 LHS 结果如何，RHS 表达式总被求值。这违反大多数语言中 `&&`/`||` 的短路语义（LHS false 时 `&&` 不求值 RHS；LHS true 时 `||` 不求值 RHS）
+- **现象**：Frond 的 `&&`（逻辑与）和 `||`（逻辑或）运算符不实现短路求值——无论 LHS 结果如何，RHS 表达式总被求值。这违反大多数语言中 `&&`/`||` 的短路语义（LHS false 时 `&&` 不求值 RHS；LHS true 时 `||` 不求值 RHS）
 - **复现代码**（最小，用顶层函数隔离闭包捕获问题）：
-  ```kuzo
+  ```frond
   var sc_count: i32 = 0
   fun scBump(): bool { sc_count = sc_count + 1; true }
 
@@ -1107,7 +1107,7 @@
 - **发现场景**：edge_arrays 测试中，递归构建 `rangeArr(10)`/`reverseArr` 后，`(e1 ++ [1]).len()` 返回 0 而非 1
 - **现象**：在执行过递归数组构建（函数返回 `[]` 或 `arr ++ [x]` 的递归）后，对空数组变量做**内联**拼接字面量 `(empty ++ [literal]).len()` 会丢失字面量数组，返回 0 长度。先赋值到 val 再 `.len()` 则正常
 - **复现代码**（最小）：
-  ```kuzo
+  ```frond
   fun rangeArr(n: i32): i32[] {
       if n <= 0 { [] } else { rangeArr(n - 1) ++ [n - 1] }
   }
@@ -1135,7 +1135,7 @@
 - **状态**：已修复 (2026-08-07)
 - **现象**：trait 默认方法链中，一个默认方法调用另一个默认方法时，返回源代码片段而非求值结果
 - **复现代码**：
-  ```kuzo
+  ```frond
   trait Chain {
       fun base(self): str
       fun wrap1(self): str { "[" + self.base() + "]" }
@@ -1188,7 +1188,7 @@
 - **状态**：已修复 (2026-08-07)
 - **现象**：字符串字面量中，插值花括号 `{}` 内包含转义引号 `\"` 时，词法/解析器无法正确处理，导致整个文件的解析失败（`parse error: expected expression`）。转义引号在非插值上下文中正常工作。
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val s = "{\"hello\"}"   // → parse error，整个文件无法解析
       println(s)
@@ -1214,7 +1214,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`for x in arr.iter()` 无法正确迭代数组元素
 - **复现代码**：
-  ```kuzo
+  ```frond
   for n in arr.iter() {
       sum = sum + n  // 不执行或返回错误
   }
@@ -1229,7 +1229,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：可空链式访问 `obj?.field` 无法使用，短路返回 null 后与 `null` 比较返回 false
 - **复现代码**：
-  ```kuzo
+  ```frond
   val city = user?.addr?.city  // 短路返回 null
   println(city == null)        // false（应为 true）
   ```
@@ -1243,7 +1243,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`str?` 类型的 `??` 合并运算符结果与字符串比较返回 false
 - **复现代码**：
-  ```kuzo
+  ```frond
   val s: str? = null
   println(s ?? "default")                  // "default"（正确）
   println((s ?? "default") == "default")    // false（应为 true）
@@ -1263,7 +1263,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：`while` 循环中的 `break` 语句不生效，循环无法提前退出
 - **复现代码**：
-  ```kuzo
+  ```frond
   var j: i32 = 0
   while j < 100 {
       if j >= 5 { break }  // break 不生效
@@ -1281,7 +1281,7 @@
 - **状态**：已修复 (2026-08-05，随 #13 一并修复）
 - **现象**：函数中通过 match 解包 newtype 并返回值时，返回 `void`（与 #13 关联）
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun celsiusRaw(c: Celsius): f64 {
       match c {
           Celsius(v) => v  // 不执行
@@ -1300,7 +1300,7 @@
 - **发现场景**：数值边界测试中，`i32_min / -1` 导致 panic
 - **现象**：有符号整数除法在溢出时 panic，与加减乘的 wrapping 语义不一致
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val min: i32 = -2147483648
       val r = min / -1   // panic: attempt to divide with overflow
@@ -1347,7 +1347,7 @@
 - **发现场景**：edge_adt 测试中，`Square(s) => s * s`（s 遮蔽参数 s）返回 0 而非 25.0
 - **现象**：当 ADT 变体（`type T = | V(f64)`）的 match 模式变量名与函数参数名相同时，且模式变量为 f64 类型且在 match arm body 中参与二元运算（`*`、`+` 等），运算结果为 0 而非正确值
 - **复现代码**：
-  ```kuzo
+  ```frond
   type W3 = | W3(f64)
   fun doubleF64(w: W3): f64 {
       match w {
@@ -1377,7 +1377,7 @@
 - **发现场景**：edge_misc 测试中，`cast(true).to(i32)` 返回 0 而非 1
 - **现象**：`cast(true).to(i32)` 返回 `0`（应为 1）；`cast(false).to(i32)` 返回 `0`（正确）。即 bool→i32 cast 中 true 被错误地转为 0。**对照**：反向 `cast(42i32).to(bool)` == true ✓、`cast(0i32).to(bool)` == false ✓（i32→bool 正常）
 - **复现代码**：
-  ```kuzo
+  ```frond
   fun main(): void {
       val bool_to_i = cast(true).to(i32)
       println(bool_to_i)   // 0（应为 1）
@@ -1409,7 +1409,7 @@
 - **状态**：已修复 (2026-08-05，随 #1 一并修复）
 - **现象**：`p1 == p3` 返回 `true`，无论字段是否相同
 - **复现代码**：
-  ```kuzo
+  ```frond
   val p1 = Point(3, 4)
   val p3 = Point(5, 6)
   println(p1 == p3)  // true（应为 false）
@@ -1425,7 +1425,7 @@
 - **现象**：对包含非 ASCII 字符（如 `'é'`、`'你'`）的字符串进行索引访问时，字符显示为 `U+XXXX` 转义形式而非实际字符；char 字面量 `'é'` 触发 panic
 - **错误信息**：`end byte index ... is not a char boundary`
 - **复现代码**：
-  ```kuzo
+  ```frond
   val u = "héllo你好"
   println(u[1])  // 原显示 U+00E9（应为 é）；'é' 字面量 panic
   ```
@@ -1445,7 +1445,7 @@
 - **状态**：已修复 (2026-08-05)
 - **现象**：字符串插值 `"{bool_expr}"` 中直接嵌入 `bool == bool` 比较表达式时，结果恒为 `true`，而相同表达式直接打印或赋值给变量后再插值均正常
 - **复现代码**：
-  ```kuzo
+  ```frond
   println(true == false)              // false（正确）
   val r: bool = true == false
   println(r)                          // false（正确）
@@ -1462,12 +1462,12 @@
 
 - **状态**：已修复 (2026-08-07)
 - **发现场景**：edge_strings 测试中，`"e\u0301"` 导致 parse error: expected expression
-- **现象**：Kuzo 字符串和字符字面量不支持以下转义序列：
+- **现象**：Frond 字符串和字符字面量不支持以下转义序列：
   - `\uXXXX`（Unicode 码点转义，如 `\u0301` 组合尖音符）
   - `\u{XXXX}`（花括号形式，支持辅助平面，如 `\u{1F600}`）
   - `\0`（空字符，NUL）
 - **复现代码**：
-  ```kuzo
+  ```frond
   val s = "e\u0301"    // parse error: expected expression
   val c = '\0'          // parse error: expected expression
   ```
@@ -1491,11 +1491,11 @@
 - **状态**：已修复 (2026-08-07)
 - **现象**：字符串字面量中包含 `{[...]}` 模式时，`{[...]}` 被当作字符串插值解析，`[...]` 被视为数组字面量表达式，内部标识符报 undefined variable
 - **复现代码**：
-  ```kuzo
+  ```frond
   check(tag_x.wrap3() == "<{[X]}>", ...)
   // sema 错误：undefined variable 'X'（`{[X]}` 被解析为插值，`[X]` 为数组字面量）
   ```
-- **影响**：无法在字符串字面量中直接包含 `{[...]}` 文本（如 JSON、数学符号）。Kuzo 无 `{}` 转义机制（`{{ }}` 或 `\{` 均不支持）。
+- **影响**：无法在字符串字面量中直接包含 `{[...]}` 文本（如 JSON、数学符号）。Frond 无 `{}` 转义机制（`{{ }}` 或 `\{` 均不支持）。
 - **根因**：字符串插值词法/解析阶段将所有 `{...}` 视为插值表达式，没有转义语法
 - **修复**：`Parser.rs` 的 `scan_string` 新增 `{{`/`}}` 花括号转义语法。`{{` 表示字面量 `{`，`}}` 表示字面量 `}`，不被当作插值解析。需要字面量花括号时使用 `"{{[X]}}"` 代替 `"{[X]}"`
 - **验证**：edge_traits 测试使用 `{{`/`}}` 转义后 ALL PASSED；8/8 unit + 35/35 functional + 5/5 perf 全部通过，无回退
@@ -1577,9 +1577,9 @@
 - **根因**：现有 functional 测试均为正向用例（能编译通过），无负向用例触发 `type annotation mismatch`。
 - **修复**：新增 `tests/functional/edge_nested_types/` 目录：
   - `src/Main.kz`：10 节正向测试（2D/3D 数组、嵌套 Throw、数组 of Throw、Throw of 数组、嵌套函数类型、nullable 数组、record 嵌套字段、函数签名嵌套注解、混合 `Throw<i32[]?, Error>`），全部 ALL PASSED
-  - `negative/`：7 个负向用例（`kuzo debug --stage check` 均退出 1），覆盖维度不匹配、元素类型不匹配、嵌套 Throw 内部不匹配、数组 of Throw 元素不匹配、Throw of 数组元素不匹配、nullable 数组元素不匹配、函数返回值不匹配
-- **验证**：正向 `kuzo run` ALL PASSED；负向 7/7 报 `type annotation mismatch` 且 expected/found 显示正确（除 Bug #58 的 `'_NNN` 显示瑕疵）。
-- **附注**：测试中 `kuzo.toml` 的 `entry` 应为 `src/Main.kz`，但现存 `edge_arrays` 等目录误写为 `src/Main.kuzo`（main.rs 的 DEFAULT_ENTRY 与 read_source 实际读 `.kz`，manifest 的错误 entry 在 `kuzo run`（无参，走 resolve_entry_path 读 manifest）时会触发 "No such file"，需用 `kuzo debug` 绕过）。建议统一修正现存 toml。
+  - `negative/`：7 个负向用例（`frond debug --stage check` 均退出 1），覆盖维度不匹配、元素类型不匹配、嵌套 Throw 内部不匹配、数组 of Throw 元素不匹配、Throw of 数组元素不匹配、nullable 数组元素不匹配、函数返回值不匹配
+- **验证**：正向 `frond run` ALL PASSED；负向 7/7 报 `type annotation mismatch` 且 expected/found 显示正确（除 Bug #58 的 `'_NNN` 显示瑕疵）。
+- **附注**：测试中 `frond.toml` 的 `entry` 应为 `src/Main.kz`，但现存 `edge_arrays` 等目录误写为 `src/Main.frond`（main.rs 的 DEFAULT_ENTRY 与 read_source 实际读 `.kz`，manifest 的错误 entry 在 `frond run`（无参，走 resolve_entry_path 读 manifest）时会触发 "No such file"，需用 `frond debug` 绕过）。建议统一修正现存 toml。
 
 ---
 
@@ -1616,7 +1616,7 @@
 - **优先级**：P2（错误信息可读性，影响用户定位）
 - **位置**：`src/sema/Inference.rs:2989-3002`（type annotation mismatch 报错）+ `src/types/Display.rs`（TypeDisplay）
 - **现象**：用户定义类型别名后，在 `type annotation mismatch` 报错中，`expected` 侧显示别名展开后的底层类型而非别名名。
-  ```kuzo
+  ```frond
   type Mat2D = i32[][]
   type I64Arr = i64[]
   fun main(): void {
@@ -1638,7 +1638,7 @@
 - **影响**：
   1. 用户写 `Mat2D` 却在报错里看到 `i32[][]`，无法快速对应自己代码中的类型声明
   2. 别名本是为可读性而生，报错展开别名削弱了别名的价值
-  3. 对比 Rust（保留类型别名名）、TypeScript（保留别名），Kuzo 此行为不符合主流语言惯例
+  3. 对比 Rust（保留类型别名名）、TypeScript（保留别名），Frond 此行为不符合主流语言惯例
 - **建议修复**：在 `TypeHandle` 或 `Ty` 中增加可选的"源别名名"元数据（`origin_alias: Option<Symbol>`），`concretize_type` 解析别名时记录原名，`TypeDisplay` 优先渲染别名名（可附 `= <底层类型>` 辅助）。或更轻量：在 mismatch 报错路径保留 AST 层的 `TypeRef`，用 AST 节点信息渲染 expected 侧。
 - **复现**：`tests/functional/edge_nested_types/negative/alias_expanded_in_error.kz`（exit 1，当前显示展开形式）
 
@@ -1646,7 +1646,7 @@
 
 ## 杠精全特性测试批次（Bug #62-#70）
 
-以下 bug 由"杠精"视角对 Kuzo 全部语言特性（变量/字面量/函数/闭包/泛型/ADT/Record/Throw/async/channel/数组/字符串/插值/控制流）进行边界测试发现。每条均含最小复现代码。
+以下 bug 由"杠精"视角对 Frond 全部语言特性（变量/字面量/函数/闭包/泛型/ADT/Record/Throw/async/channel/数组/字符串/插值/控制流）进行边界测试发现。每条均含最小复现代码。
 
 ---
 
@@ -1655,7 +1655,7 @@
 - **状态**：已修复（2026-08-10，Ops.rs arith_div_* 添加除零检查，触发 panic）
 - **优先级**：P0（内存/数值安全）
 - **现象**：
-  ```kuzo
+  ```frond
   val z: i32 = 0i32
   val dz: i32 = 1i32 / z   // 打印 0，不 panic
   val mz: i32 = 1i32 % z   // 打印 0，不 panic
@@ -1672,7 +1672,7 @@
 
 - **状态**：已修复（2026-08-10，Compute.rs compute_array_index 添加索引范围检查，越界 panic）
 - **现象**：
-  ```kuzo
+  ```frond
   val arr: i32[] = [10i32, 20i32, 30i32]
   val oob: i32 = arr[5]    // 打印 <non-scalar>，不 panic
   val neg: i32 = arr[-1]   // 打印 <non-scalar>，不 panic
@@ -1681,7 +1681,7 @@
   ```
   程序正常退出 exit 0。`<non-scalar>` 是未初始化/越界内存的 Display 输出。
 - **根因**：数组索引运行时未做边界检查（`0 <= idx < len`），直接按偏移读取，越界返回未初始化内存。
-- **影响**：这是静态类型语言最严重的安全缺陷——用户可读任意内存。负索引同理。对比 Rust（panic）、Java（ArrayIndexOutOfBoundsException）、Python（IndexError），Kuzo 静默返回垃圾值是最差行为。
+- **影响**：这是静态类型语言最严重的安全缺陷——用户可读任意内存。负索引同理。对比 Rust（panic）、Java（ArrayIndexOutOfBoundsException）、Python（IndexError），Frond 静默返回垃圾值是最差行为。
 - **建议修复**：数组索引运行时强制 `0 <= idx < len` 检查，越界 panic。
 - **复现**：`val x: i32 = [1i32][10i32]; println(x)` → 打印 `<non-scalar>`
 
@@ -1692,7 +1692,7 @@
 - **状态**：已修复（2026-08-10，sema 阶段 check_match_exhaustive 检查 ADT 构造器覆盖；Builder.rs compile_panic_subgraph + Compute.rs compute_match_fallback 运行时兜底 panic）
 - **优先级**：P0（类型安全）
 - **现象**：
-  ```kuzo
+  ```frond
   type Color = | Red | Green | Blue
   fun toStr(c: Color): str {
       match c {
@@ -1704,11 +1704,11 @@
       println(toStr(Blue))   // 打印 "void"，不 panic
   }
   ```
-  sema 阶段 `kuzo debug --stage check` 报 `ok (no type errors)`，运行时传 `Blue`（无匹配分支）静默返回 `void`，而函数声明返回 `str`。
+  sema 阶段 `frond debug --stage check` 报 `ok (no type errors)`，运行时传 `Blue`（无匹配分支）静默返回 `void`，而函数声明返回 `str`。
 - **根因**：sema 的 match 穷尽性检查未实现或不完整——漏分支不报 `non-exhaustive match`。运行时无匹配分支时无 fallback/panic，直接"穿透"返回默认值（void）。
 - **影响**：静态类型语言的核心安全保证被破坏——声明返回 `str` 的函数可能返回 `void`。所有 match 表达式都不安全。
 - **建议修复**：1) sema 实现 match 穷尽性检查，漏分支报 `non-exhaustive match: missing Blue`；2) 运行时无匹配分支时 panic（兜底）。
-- **复现**：见上方代码，`kuzo debug --stage check` 通过，`kuzo run` 打印 `void`
+- **复现**：见上方代码，`frond debug --stage check` 通过，`frond run` 打印 `void`
 
 ---
 
@@ -1717,7 +1717,7 @@
 - **状态**：已修复并验证（throw 场景运行时验证通过；return 场景通过 edge_defer 测试套件 15/15 PASS 确认无回归）
 - **优先级**：P0（控制流正确性）
 - **现象**：
-  ```kuzo
+  ```frond
   fun withDefer(): Throw<i32, Error> {
       defer { println("defer ran") }
       throw Error("boom")
@@ -1733,7 +1733,7 @@
   }
   ```
   输出：`1. before` / `defer ran` / `2. caught`，然后程序静默终止 exit 0，`3.` 和 `4.` 不打印。return 同理：
-  ```kuzo
+  ```frond
   fun f(): i32 { defer { println("d") }; return 42i32 }
   fun main(): void {
       val r = f()
@@ -1754,7 +1754,7 @@
 - **状态**：已修复
 - **优先级**：P1（语义不一致）
 - **现象**：
-  ```kuzo
+  ```frond
   fun main(): void {
       var log: str = ""
       {
@@ -1766,7 +1766,7 @@
   }
   ```
   defer 在 `{}` 块退出时**不执行**，`log` 为空字符串。
-- **根因**：defer 只注册到函数级 defer 栈，块作用域退出时不清算。对比 Go/Zig（defer 在任意作用域退出时执行）、Rust（drop 在块退出时执行），Kuzo 的 defer 语义不完整。
+- **根因**：defer 只注册到函数级 defer 栈，块作用域退出时不清算。对比 Go/Zig（defer 在任意作用域退出时执行）、Rust（drop 在块退出时执行），Frond 的 defer 语义不完整。
 - **影响**：资源清理（文件关闭、锁释放）在块作用域内不可靠。用户期望 `{ defer { close(f) } ... }` 在块结束时关闭文件，实际不执行。
 - **修复**：在 `Builder.rs` 的 `compile_block` 中记录块进入时的 `defer_table` 长度（`defer_mark`），块退出时通过 `compile_block_defer_cleanup` 提取新增 defer 并生成 LIFO 清算 Call 节点。引入 `in_function_top_block` 标志区分函数体顶层块和嵌套块：函数体顶层块的 defer 保留在 `defer_table` 中由函数退出时的 `run_defers_sync`/`process_frame` 执行；嵌套块的 defer 在块退出时提取并通过 `chain_effects` 链接到块结果之后执行。
 - **验证**：块级 defer 测试输出 `log = 321`（LIFO 顺序正确）；edge_defer 15/15、throw 15/15 全部通过，无回归。
@@ -1779,7 +1779,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（语义不明确）
 - **现象**：
-  ```kuzo
+  ```frond
   val sh: i32 = 1i32 << 32   // 打印 1
   ```
   i32 移位 32 位（超出 0-31 范围）返回 1（等于 `1 << 0`）。
@@ -1795,7 +1795,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（语法歧义）
 - **现象**：
-  ```kuzo
+  ```frond
   var fns: (i32) -> i32[] = []   // parse 通过
   // 但 sema 报：type annotation mismatch: expected '(i32) -> i32[]', found ''_543[]'
   ```
@@ -1812,7 +1812,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（特性缺失）
 - **现象**：
-  ```kuzo
+  ```frond
   type Unit = Unit()
   val u: Unit = Unit()   // sema 报：undefined variable 'Unit'
   ```
@@ -1832,7 +1832,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（字符串插值）
 - **现象**：
-  ```kuzo
+  ```frond
   // 1. 转义花括号
   check("{{x}}" == "{x}", "转义花括号")   // FAIL：{{x}} 不等于 {x}
   // 实际 {{x}} 可能被解析为插值 {x}（输出 42）+ 字面 }
@@ -1852,14 +1852,14 @@
 
 ## 杠精电池批次（2026-08-10）
 
-> 从用户视角对 Kuzo 全特性做"杠精"测试，不参考已有测试用例，独立设计探针。测试位于 `tests/functional/troll_battery/`，每个探针为独立 `.kz` 文件。下列编号续接 #70。
+> 从用户视角对 Frond 全特性做"杠精"测试，不参考已有测试用例，独立设计探针。测试位于 `tests/functional/troll_battery/`，每个探针为独立 `.kz` 文件。下列编号续接 #70。
 
 ## Bug #71：整数取模零静默返回 0（与 #62 同类，未覆盖）
 
 - **状态**：已修复（2026-08-10，与 #62 一并修复，Ops.rs arith_mod_* 添加除零检查）
 - **优先级**：P1（数值语义）
 - **现象**：
-  ```kuzo
+  ```frond
   val m: i32 = 1i32 % 0i32
   println("m={m}")   // 输出 m=0，exit code 0，不 panic
   ```
@@ -1875,11 +1875,11 @@
 - **状态**：已修复（sema 阶段新增 check_int_literal_range 范围检查，与 IR 阶段一致）
 - **优先级**：P1（编译流水线一致性）
 - **现象**：
-  ```kuzo
+  ```frond
   val over: i8 = 200i8   // 200 超出 i8 范围 (-128..=127)
   ```
-  - `kuzo debug --stage check` 输出 `ok: ... (no type errors)`
-  - `kuzo run` 输出 `IR error: integer literal '200' at line 40:23 is out of range for i8 (valid range: -128..=127)`
+  - `frond debug --stage check` 输出 `ok: ... (no type errors)`
+  - `frond run` 输出 `IR error: integer literal '200' at line 40:23 is out of range for i8 (valid range: -128..=127)`
 - **根因**：字面量范围检查只在 IR 阶段做，sema 阶段未做。IDE/LSP 走 check 阶段会漏报，用户以为类型正确，运行/构建才报错。
 - **影响**：编辑器诊断与编译结果不一致；用户体验割裂。
 - **建议修复**：在 sema 阶段对带类型后缀的整数字面量做范围检查（i8/u8/.../i64/u64 各自范围），与 IR 阶段共用一套范围常量。
@@ -1892,7 +1892,7 @@
 - **状态**：已修复（sema 阶段新增 check_numeric_binop_compat，对明确类型化操作数的不同位宽运算报错）
 - **优先级**：P1（类型系统严格性）
 - **现象**：
-  ```kuzo
+  ```frond
   val a: i8 = 100i8
   val b: i16 = 1000i16
   val s = a + b          // sema check 通过，运行时 100i8 + 1000i16 = 1100
@@ -1910,7 +1910,7 @@
 - **状态**：已修复（sema 阶段禁止 int/float 跨类别运算，要求显式 cast）
 - **优先级**：P0（数值正确性，静默错误结果）
 - **现象**：
-  ```kuzo
+  ```frond
   val eq1 = (1i32 == 1.0)   // 期望 true（数学相等），实际 false
   val eq2 = (1i32 == 1.5)   // false（正确）
   val add  = 1i32 + 1.0     // 输出 2（结果类型疑似 i32，1.0 被隐式截断为 1）
@@ -1927,7 +1927,7 @@
 - **状态**：已修复（debug 模式 panic on overflow，release 模式 wrapping，与 Rust 语义一致）
 - **优先级**：P2（语言可用性 / 安全性）
 - **现象**：
-  ```kuzo
+  ```frond
   val maxI32: i32 = 2147483647i32
   val over: i32 = maxI32 + 1i32    // 输出 -2147483648（wrap）
   val minI32: i32 = -2147483648i32
@@ -1949,7 +1949,7 @@
 - **状态**：已修复（sema 阶段追踪绑定可变性,禁止 val→var / var→val 遮蔽,允许同可变性遮蔽）
 - **优先级**：P2（语义保证）
 - **现象**：
-  ```kuzo
+  ```frond
   val x: i32 = 1i32
   var x: i32 = 2i32   // sema check 通过
   x = 3i32            // 通过
@@ -1967,7 +1967,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P0（defer 语义，清理逻辑丢失）
 - **现象**：
-  ```kuzo
+  ```frond
   fun main(): void {
       println("before defer")
       defer println("defer 1")   // 不打印
@@ -1989,7 +1989,7 @@
 - **状态**：已修复（2026-08-10，引擎 panic 部分；数据竞争为预期行为，需用户通过 channel 显式同步）
 - **优先级**：P0（并发正确性 + 引擎稳定性）
 - **现象**：
-  ```kuzo
+  ```frond
   var counter: i32 = 0i32
   async fun bump(): Async<void> {
       var i: i32 = 0i32
@@ -2014,7 +2014,7 @@
 - **影响**：任何并发 async 修改共享可变状态的程序都可能得到错误结果或崩溃。并发 + 全局可变是常见模式，此 bug 使其不可用。
 - **修复**：
   1. 引擎 panic 部分已修复：`Subgraph.rs::complete_and_wake_caller` 的 LoopBody 分支在多 worker 并发场景下，loop_frame 可能被另一个 worker 暂时取出，原先直接 panic。改为当 loop_frame 不在 frames 中时，将完成信息存入 `pending_completions`，由 `process_frame` 在 loop_frame 重新插入后重放。同时 `Schedule.rs` 消费 `pending_completions` 时对所有 call node 传播 `control_signal`（原先仅对 Gate 节点传播，导致 break/return 信号丢失）。
-  2. 数据竞争导致的计数偏差属于语言语义范畴：Kuzo 不对全局可变变量提供隐式同步，并发访问需用户通过 channel 显式同步。这是预期行为（与 Rust 的 `static mut` 语义一致：unsafe + 需用户自行同步），测试用例也以 "expect 2000 if serial, less if race" 标注。后续可通过提供 `Atomic<T>` / 互斥原语改进（特性请求，非 bug）。
+  2. 数据竞争导致的计数偏差属于语言语义范畴：Frond 不对全局可变变量提供隐式同步，并发访问需用户通过 channel 显式同步。这是预期行为（与 Rust 的 `static mut` 语义一致：unsafe + 需用户自行同步），测试用例也以 "expect 2000 if serial, less if race" 标注。后续可通过提供 `Atomic<T>` / 互斥原语改进（特性请求，非 bug）。
 - **修复后行为**：`p15_global_race.kz` 运行稳定输出 `counter=1022 (expect 2000 if serial, less if race)`，不再 panic。
 - **复现**：`tests/functional/troll_battery/probes/p15_global_race.kz`
 
@@ -2025,7 +2025,7 @@
 - **状态**：已修复（2026-08-10，缺陷 1 自动 await 转发；channel 竞态 void 已修复）
 - **优先级**：P0（async 语义正确性）
 - **现象**：
-  ```kuzo
+  ```frond
   async fun compute(): Async<i32> { 99 }
 
   // 缺陷 1：直接转发 async 调用结果，返回垃圾值
@@ -2059,7 +2059,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（类型系统健全性）
 - **现象**：
-  ```kuzo
+  ```frond
   type A = B
   type B = A
   // sema check 通过（no type errors）
@@ -2078,7 +2078,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（类型系统健全性）
 - **现象**：
-  ```kuzo
+  ```frond
   type A = | Foo(i32)
   type B = | Foo(str)
   // sema check 通过（no type errors）
@@ -2098,7 +2098,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P2（类型系统健全性）
 - **现象**：
-  ```kuzo
+  ```frond
   type P = P(x: i32, x: i32)   // sema check 通过
   ```
 - **根因**：Record/ADT 构造子字段名未做唯一性检查。`constructor_def_to_ctor_info`/`record_fields_to_ctor_info` 直接收集所有字段名，不检测重复。
@@ -2113,7 +2113,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P1（泛型类型推断）
 - **现象**：
-  ```kuzo
+  ```frond
   fun pair<T>(a: T, b: T): T { a }
   val v = pair(1i32, 2i64)   // sema check 通过
   println("v={v}")           // 输出 v=1（T 绑定为 i32，2i64 被静默接受）
@@ -2136,7 +2136,7 @@
 - **状态**：已修复（2026-08-10）
 - **优先级**：P3（诊断完整性）
 - **现象**：
-  ```kuzo
+  ```frond
   fun boom(): Throw<i32, Error> {
       throw Error("x")
       val y: i32 = 1i32   // 永不执行，但无 warning
@@ -2158,7 +2158,7 @@
 - **状态**：已修复
 - **优先级**：P1（类型安全 / 诊断完整性）
 - **现象**：
-  ```kuzo
+  ```frond
   type Opt = | Some(i32) | None
   match x {
       Some(0) => ...    // 只覆盖 Some(0)
@@ -2188,14 +2188,14 @@
 
 1. 在对应测试文件中移除临时绕过方案，恢复标准语法
 2. 移除测试文件头部的"注意"注释
-3. 运行 `cd test-suite/functional/<name> && kuzo run` 验证修复
+3. 运行 `cd test-suite/functional/<name> && frond run` 验证修复
 4. 运行完整测试套件确认无回归：
   ```bash
-  cd /Users/haojunhuang/CLionProjects/Kuzo
-  KUZO=./rust/target/release/kuzo
+  cd /Users/haojunhuang/CLionProjects/Frond
+  FROND=./rust/target/release/frond
   for d in test-suite/functional/*/; do
       name=$(basename "$d")
-      result=$(cd "$d" && $KUZO run 2>&1 | tail -1)
+      result=$(cd "$d" && $FROND run 2>&1 | tail -1)
       echo "  $name: $result"
   done
   ```

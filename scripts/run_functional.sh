@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# 功能测试 runner：遍历 ../functional/*/，每项目 `kuzo run`，断言输出含 "RESULT: ALL PASSED"。
+# 功能测试 runner：遍历 ../functional/*/，每项目 `frond run`，断言输出含 "RESULT: ALL PASSED"。
 # 用法: ./run_functional.sh [目录名...]   （不带参数 = 全部）
 set -u
 cd "$(dirname "$0")"
 
-KUZO="${KUZO:-}"
-if [ -z "$KUZO" ]; then
-    KUZO="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/kuzo.exe"
+FROND="${FROND:-}"
+if [ -z "$FROND" ]; then
+    FROND="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/frond.exe"
 fi
-if [ ! -f "$KUZO" ]; then
-    echo "kuzo binary not found at $KUZO (build first or set KUZO env var)" >&2
+if [ ! -f "$FROND" ]; then
+    echo "frond binary not found at $FROND (build first or set FROND env var)" >&2
     exit 2
 fi
 
@@ -32,7 +32,7 @@ for dir in ../functional/*/; do
         done
         [ $skip -eq 1 ] && continue
     fi
-    out="$(cd "$dir" && timeout 300 "$KUZO" run 2>&1)"
+    out="$(cd "$dir" && timeout 300 "$FROND" run 2>&1)"
     ec=$?
     is_known=0
     for k in $KNOWN_BASELINE_FAIL; do
