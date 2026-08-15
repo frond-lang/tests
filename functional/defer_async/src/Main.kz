@@ -1,0 +1,107 @@
+// 功能验证：defer 与 async 的组合（async fun 内 defer 体含 await）
+// 回归锚点：defer 帧全部完成后，async 启动的父帧必须经 AsyncJoin 唤醒
+// 等待者（而非 SubgraphComplete），否则 await 之后的续执行静默丢失。
+import std.io.Fs
+import std.io.File
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+async fun inner(): Async<Throw<i32, IOError>> {
+    Ok(1)
+}
+
+// 最小形状：async fun + defer 内 await —— 调用方 await 后的续执行不得丢失
+async fun d2(): Async<Throw<i32, IOError>> {
+    defer { val y = inner().await()? }
+    Ok(2)
+}
+
+// 同步 defer 体（无 await）在 async fun 中的 LIFO 顺序验证
+var g_log: str = ""
+async fun with_sync_defers(): Async<Throw<str, IOError>> {
+    g_log = "body,"
+    defer { g_log = g_log + "D0," }
+    defer { g_log = g_log + "D1," }
+    Ok(g_log)
+}
+
+// Sync fn + defer containing a DIRECT await: the strongest regression anchor
+// for the defer+await family. Two historical layers: (a) the inline-completed
+// callee writing its result directly (AsyncJoinSource fast path), (b) async
+// signatures carrying placeholder types (concretize_type's Generic branch
+// discarding type args), which broke the value-propagation chain for these
+// compositions. Both fixed — the direct shape must stay green.
+fun sync_defer_await(): void {
+    Fs.write_file("defer_s.txt", "x").await()?
+    defer {
+        val _ = File.remove("defer_s.txt").await()
+    }
+    print("body,")
+}
+
+fun File_remove_exists_check(): bool {
+    match File.remove("defer_s.txt").await() {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+// The qualified-call incident's original shape: File.remove(...).await()
+// inside async code (discovered during defer work — it silently bound
+// Env.remove via the bare-name slot and deleted NOTHING while returning Ok).
+// Regression anchor: the side effect itself (world-state diff), never Ok/Err.
+fun file_remove_side_effect_shape(): void {
+    Fs.write_file("defer_fr.txt", "x").await()?
+    val r = File.remove("defer_fr.txt").await()
+    match r {
+        Ok(_) => {
+            val gone = match Fs.exists("defer_fr.txt").await() {
+                Ok(b) => b == false,
+                Err(_) => false,
+            }
+            check(gone, "File.remove(.await) actually deletes the file")
+        },
+        Err(e) => check(false, "File.remove(.await) returned Err ({e.msg})"),
+    }
+}
+
+fun main(): void {
+    println("=== defer x async ===")
+
+    // 1) 最小形状：await 返回后续执行保留
+    val y = d2().await()?
+    check(y == 2, "async fn + defer(await) returns to caller (y={y})")
+
+    // 2) stdlib 真实链：one-shot 内部 defer close -> 数据往返
+    Fs.write_file("defer_t.txt", "roundtrip").await()?
+    val back = Fs.read_file("defer_t.txt").await()?
+    check(back == "roundtrip", "Fs one-shot (defer close) roundtrip")
+    val _ = File.remove("defer_t.txt").await()
+
+    // 2b) 同步函数 + defer 内 await：返回后续执行保留（曾永久挂死）
+    sync_defer_await()
+    check(true, "sync fn + defer(await) returns")
+
+    // 2c) File.remove 副作用形状：裸名撞车案的原始触发形状
+    file_remove_side_effect_shape()
+
+    // 3) defer 的执行发生在函数体完成之后（LIFO）
+    val _ = with_sync_defers().await()?
+    check(g_log == "body,D1,D0,", "defers run LIFO after body (got {g_log})")
+
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

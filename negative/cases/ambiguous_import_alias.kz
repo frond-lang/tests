@@ -1,0 +1,13 @@
+// Two selective imports bind the same alias to two different functions:
+// Sema's alias authority must reject the duplicate binding at check time —
+// never a silent first/last-writer-wins that would rebind every bare call.
+// EXPECT: import alias 'remove' is already bound
+import std.io.File.{remove}
+import std.os.Env.{remove}
+
+fun main(): void {
+    match remove("some_file.txt").await() {
+        Ok(_) => println("ok"),
+        Err(e) => println("err {e.msg}"),
+    }
+}

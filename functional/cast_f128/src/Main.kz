@@ -1,0 +1,67 @@
+// 功能验证：整数/bool → f128 转换精度（回归：Bug #86）
+// Bug #86: from_i128/from_u128 曾以 pack(exp=0) 构造，所有整数被缩放 2^-112
+// （3 → 5.78e-34）；bool → f128 恒为 0。修复后必须精确。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+fun u128max(): u128 { 340282366920938463463374607431768211455u128 }
+
+fun main(): void {
+    // 小整数各源类型
+    check(3i8 as f128 == 3.0f128, "i8 -> f128")
+    check(3i16 as f128 == 3.0f128, "i16 -> f128")
+    check(3i32 as f128 == 3.0f128, "i32 -> f128")
+    check(3i64 as f128 == 3.0f128, "i64 -> f128")
+    check(3i128 as f128 == 3.0f128, "i128 -> f128")
+    check(3u8 as f128 == 3.0f128, "u8 -> f128")
+    check(3u32 as f128 == 3.0f128, "u32 -> f128")
+    check(3u64 as f128 == 3.0f128, "u64 -> f128")
+    check(3u128 as f128 == 3.0f128, "u128 -> f128")
+
+    // 零与负数
+    check(0i128 as f128 == 0.0f128, "zero -> f128")
+    check((0 - 5i128) as f128 < 0.0f128, "neg -> f128 sign")
+    check((0 - 5i128) as f128 == 5.0f128 * (0.0f128 - 1.0f128), "neg -> f128 value")
+
+    // 2 的幂（尾数=1 的极端情形）
+    check(1180591620717411303424i128 as f128 == 1180591620717411303424.0f128, "2^70 -> f128")
+
+    // u128 上限（需要舍入到 2^128）
+    check(u128max() as f128 > 3.0e38f128, "u128max -> f128 magnitude")
+
+    // bool（回归：恒为 0）
+    check(true as f128 == 1.0f128, "true -> f128")
+    check(false as f128 == 0.0f128, "false -> f128")
+
+    // f128 → 整数往返
+    check((3i128 as f128) as i128 == 3i128, "i128 -> f128 -> i128 roundtrip")
+    check(((0 - 7i64) as f128) as i64 == 0 - 7i64, "i64 neg roundtrip")
+
+    // float 源不受影响
+    check(3.5f64 as f128 == 3.5f128, "f64 -> f128")
+    check(2.25f32 as f128 == 2.25f128, "f32 -> f128")
+
+    // f128 算术（确认修复未破坏运算路径）
+    check(1.5f128 + 2.5f128 == 4.0f128, "f128 add")
+    check(6.0f128 / 4.0f128 == 1.5f128, "f128 div")
+    // Bug #90: division left junk bits in the low mantissa (printed 1.5 but
+    // differed from the literal at bit level). All of these are exact quotients
+    // and must be bit-identical to their literals.
+    check(3.0f128 / 2.0f128 == 1.5f128, "f128 div bit-exact 3/2")
+    check(6.0f128 / 4.0f128 == 3.0f128 / 2.0f128, "f128 div consistency")
+    check(1.0f128 / 2.0f128 == 0.5f128, "f128 div bit-exact 1/2")
+    check(10.0f128 / 4.0f128 == 2.5f128, "f128 div bit-exact 10/4")
+    check(6.0f128 / 4.0f128 - 1.5f128 == 0.0f128, "f128 div subtracts to zero")
+    check(2.0f128 * 3.0f128 == 6.0f128, "f128 mul")
+
+    summary()
+}

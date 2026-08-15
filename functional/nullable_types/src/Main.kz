@@ -1,0 +1,107 @@
+// 功能验证：类型后缀链 —— T?[]（元素级 nullable）与后缀组合
+// 此前 `T?[]` 因 `?` 后缀循环不消费 `[` 而 parse error。现统一为交错后缀链
+//（? / [] / [N]，从左到右）：i32?[] = 元素可空的数组；i32[]? = 可空数组。
+// 字面写出的 T?? 被 sema 拒绝（nullable 无 Some 构造器,嵌套无意义,静默折叠会
+// 让 Kotlin/TS 用户带着 Some(null) 的错误预期写代码）——但类型机器内部仍折叠
+// 泛型实例化产生的嵌套（`T?` 当 T := X?）,保证泛型组合闭合。见负向
+// double_nullable_*.kz。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// ── 泛型闭合：`T?` 当 T 实例化为 nullable 时内部折叠为 T? ──
+fun firstOr<T>(arr: T[]): T? {
+    if arr.len() == 0 {
+        null
+    } else {
+        arr[0]
+    }
+}
+type Alias = i32?
+
+// ── T?[]：元素级 nullable ──
+fun makeElems(): i32?[] {
+    val a: i32?[] = [1, null, 3]
+    a
+}
+fun countNonNull(a: i32?[]): i32 {
+    var n: i32 = 0
+    var i: usize = 0
+    while i < a.len() {
+        if a[i] != null {
+            n = n + a[i]
+        }
+        i = i + 1
+    }
+    n
+}
+fun elemOr(a: i32?[], d: i32): i32 { a[0] ?? d }
+
+fun main(): void {
+    // cast 位置
+    val seven: i32 = 7
+    check(seven as i32? != null, "cast as i32?")
+    check(seven as i32?[] == null || true, "cast as i32?[] parses")
+
+    // T?[] 字面量与读写
+    val arr: i32?[] = [1, null, 3]
+    check(arr.len() == 3, "T?[] len")
+    check(arr[0] == 1 && arr[2] == 3, "T?[] non-null elems")
+    check(arr[1] == null, "T?[] null elem read")
+    var m: i32?[] = [1, 2]
+    m[0] = null
+    check(m[0] == null && m[1] == 2, "T?[] write null")
+
+    // null 开头 / 全 null 字面量
+    val lead = [null, 1, null, 4]
+    check(lead[0] == null && lead[3] == 4, "null-leading literal")
+    val alln: i32?[] = [null, null]
+    check(alln[0] == null && alln[1] == null, "all-null literal")
+
+    // 泛型闭合：T := i32? 时 (i32?)? 内部折叠为 i32?
+    val g1 = firstOr([7, 8])
+    check(g1 == 7, "generic T=i32 first")
+    val g2 = firstOr(arr)
+    check(g2 == 1, "generic T=i32? first (collapsed)")
+    val g3 = firstOr(alln)
+    check(g3 == null, "generic T=i32? null elem")
+    // Alias? ：命名类型解析为 nullable 后再包 ? —— 合法且折叠
+    val al: Alias? = null
+    check(al == null, "Alias? (resolved nesting) ok")
+
+    // 函数签名
+    val r = makeElems()
+    check(r[1] == null && r.len() == 3, "fn returns T?[]")
+    check(countNonNull([1, null, 3, null, 5]) == 9, "indexed iteration sum")
+    check(elemOr([null, 2], 100) == 100, "elvis on null elem")
+    check(elemOr([9, 2], 100) == 9, "elvis on value elem")
+
+    // 组合后缀
+    val na: i32?[]? = null
+    check(na == null, "i32?[]? null")
+    val na2: i32?[]? = [1, null]
+    check(na2 != null, "i32?[]? present")
+    val nested: i32?[][] = [[1, null], [null, 2]]
+    check(nested[0][1] == null && nested[1][0] == null, "nested T?[][]")
+    check(nested[1][1] == 2, "nested value")
+    val sized: i32?[3] = [1, null, 3]
+    check(sized[1] == null && sized.len() == 3, "sized T?[3]")
+
+    // 流窄化：null 检查后可直接当非空值用
+    val e: i32? = arr[0]
+    if e != null {
+        check(e + 1 == 2, "flow-narrowed elem arithmetic")
+    } else {
+        check(false, "flow-narrowed elem arithmetic (wrong branch)")
+    }
+
+    summary()
+}

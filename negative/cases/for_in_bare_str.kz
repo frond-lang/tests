@@ -1,0 +1,4 @@
+// EXPECT: does not implement Iterator
+fun main(): void {
+    for c in "abc" { println("{c}") }
+}

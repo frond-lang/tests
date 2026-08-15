@@ -1,0 +1,5 @@
+// EXPECT: missing return value
+fun main(): void {
+    val f = fun(): i32 { val x: i32 = 1 }
+    println("{f()}")
+}

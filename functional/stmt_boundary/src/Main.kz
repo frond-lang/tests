@@ -1,0 +1,129 @@
+// 功能验证：语句边界（回归：Bug #88）
+// Bug #88: `;` 是空白且换行不阻断后缀解析，`(`/`[`/`-` 开头的语句被并入
+// 前一语句的尾表达式（`val a = 5` 换行 `(a+1)` → `5(a+1)` 调用；
+// `val n = 2` 换行 `[n, n+1]` → `2[n, n+1]` 索引；`val x = 5` 换行 `-3` → `5-3`）。
+// 修复：后缀 token 与前一 token 不在同一行时视为新语句。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+fun add(x: i32, y: i32): i32 { x + y }
+
+// ── 1. 括号表达式作为函数尾表达式 ──
+fun parenTail(): i32 {
+    val a: i32 = 5
+    (a + 1)
+}
+fun parenDouble(): i32 {
+    val a: i32 = 5
+    ((a + 2))
+}
+fun parenSingleIdent(): i32 {
+    val a: i32 = 7
+    (a)
+}
+fun parenCallTail(): i32 {
+    val a: i32 = 3
+    (add(a, 4))
+}
+
+// ── 2. 括号表达式作为非尾语句 ──
+fun parenMidStmt(): i32 {
+    val a: i32 = 2
+    val t = a * 3
+    (t + 1)
+    t
+}
+
+// ── 3. 数组字面量作为函数尾表达式（Bug #88 最常见伤害）──
+fun arrTailMulti(): i32[] {
+    val n: i32 = 2
+    [n, n + 1]
+}
+fun arrTailSingle(): i32[] {
+    val n: i32 = 9
+    [n]
+}
+fun arrTailConcat(): i32[] {
+    val base: i32[] = [1]
+    base ++ [2, 3]
+}
+
+// ── 4. 负数字面量作为尾表达式 ──
+fun negTail(): i32 {
+    val x: i32 = 5
+    -3
+}
+fun negAfterArr(): i32 {
+    val xs: i32[] = [1]
+    xs.len()
+    -100
+}
+
+// ── 5. 括号 Elvis ──
+fun parenElvis(): i32 {
+    val a: i32? = null
+    val b: i32? = null
+    (a ?? b ?? 5)
+}
+fun parenElvisPartial(): i32 {
+    val a: i32? = 2
+    val b: i32? = 3
+    (a ?? b) + 10
+}
+
+// ── 6. 同行调用仍然成立（修复不得破坏正常调用）──
+fun sameLineCall(): i32 { add(2, 3) }
+
+// ── 7. 调用括号在 callee 同一行、参数跨行 ──
+fun multilineArgs(): i32 {
+    add(
+        10,
+        20
+    )
+}
+
+// ── 8. 索引同行正常 ──
+fun indexWorks(): i32 {
+    val xs: i32[] = [10, 20, 30]
+    xs[1]
+}
+
+// ── 9. 方法链同行正常 ──
+fun chainWorks(): i32 {
+    val s: str = "kuzo"
+    s.bytes().len()
+}
+
+fun main(): void {
+    check(parenTail() == 6, "paren tail")
+    check(parenDouble() == 7, "double paren tail")
+    check(parenSingleIdent() == 7, "single ident paren tail")
+    check(parenCallTail() == 7, "paren call tail")
+    check(parenMidStmt() == 6, "paren mid statement ignores value")
+    val a1 = arrTailMulti()
+    check(a1.len() == 2 && a1[0] == 2 && a1[1] == 3, "array literal tail multi")
+    val a2 = arrTailSingle()
+    check(a2.len() == 1 && a2[0] == 9, "array literal tail single")
+    val a3 = arrTailConcat()
+    check(a3.len() == 3 && a3[2] == 3, "array concat tail")
+    check(negTail() == -3, "negative literal tail")
+    check(negTail() < 0, "negative tail sign")
+    check(negAfterArr() == -100, "negative after array stmt")
+    check(parenElvis() == 5, "paren elvis chain")
+    check(parenElvisPartial() == 12, "paren elvis partial")
+    check(sameLineCall() == 5, "same-line call")
+    check(multilineArgs() == 30, "call paren same line, args multiline")
+    check(indexWorks() == 20, "same-line index")
+    check(chainWorks() == 4, "same-line method chain")
+
+    summary()
+}

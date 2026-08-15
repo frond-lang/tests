@@ -1,0 +1,4 @@
+// EXPECT: duplicate definition of function 'g'
+fun g<T>(x: T): T { x }
+fun g(x: i32): i32 { x }
+fun main(): void { println("x") }

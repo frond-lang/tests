@@ -1,0 +1,9 @@
+// EXPECT: is @internal (a stdlib implementation primitive)
+// Non-pub std helpers are marked @internal: even the qualified form
+// (Recv.__helper) is closed to user code. Public entry points only.
+import std.io.Dir
+
+fun main(): void {
+    val _ = Dir.__dir_create("neg_leak_tmp", false).await()
+    println("should not get here")
+}

@@ -1,0 +1,6 @@
+// EXPECT: only allowed in builtin (stdlib) modules
+@extern("C")
+fun forbidden(a: i32, b: i32): i32 #{
+    return a + b;
+}#
+fun main(): void { println("ok") }

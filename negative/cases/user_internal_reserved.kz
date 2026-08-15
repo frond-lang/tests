@@ -1,0 +1,4 @@
+// EXPECT: reserved for the standard library implementation
+@internal
+fun helper(): i32 { 1 }
+fun main(): void { println("ok") }

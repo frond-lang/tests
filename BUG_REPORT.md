@@ -1,7 +1,7 @@
 # Kuzo 引擎 Bug 修复追踪
 
 > 本文档由 `test-suite/` 测试套件发现，记录所有引擎 bug 的修复优先级与临时绕过方案。
-> 最后更新：2026-08-08（#1-#17 已修复；执行器审查 H1-H5、M1-M9、L1-L12 已修复；边缘测试 #18-#55 中 #18/#19/#20/#21/#22/#23/#24/#25/#26/#27/#28/#29/#30/#31/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55 已修复；P0/P1 审查修复 R1-R11 已完成；#56 match arm effect 泄漏已修复；#57 non_tail_rec_to_loop 破坏 defer LIFO 已修复）
+> 最后更新：2026-08-08（#1-#17 已修复；执行器审查 H1-H5、M1-M9、L1-L12 已修复；边缘测试 #18-#55 中 #18/#19/#20/#21/#22/#23/#24/#25/#26/#27/#28/#29/#30/#31/#33/#34/#35/#36/#37/#38/#39/#40/#41/#42/#43/#44/#45/#46/#47/#48/#49/#50/#51/#52/#53/#54/#55 已修复；P0/P1 审查修复 R1-R11 已完成；#56 match arm effect 泄漏已修复；#57 non_tail_rec_to_loop 破坏 defer LIFO 已修复）；2026-08-14 主动探测发现 #86-#93 并已全部修复（f128 转换/除法、移位优先级、语句边界、缺尾表达式、lambda return 作用域、range 运算符复活、for-in 裸 str 挂起），新增套件 cast_f128/precedence/stmt_boundary/missing_return/ranges 与 tests/negative 负向 harness（15 用例）；dogfood 真实程序（JSON 解析器）发现并修复 #97 尾传播丢 Ok 包装 / #98 错误臂构造器失配 / #99 LICM 外提别名读+字段写无序 / #100 嵌套循环调度活锁（新增 loop_nesting 套件 + dogfood_json 套件,残留边角已于同日第三批全部修复,另发现并修复 #101 带转义字符串 UTF-8 双重编码）；同日混合扫描发现并修复 #95 复合赋值绕过严格检查（i32+=f64 静默丢写）/#96 peer 字面量适配不写回 ExprInfo（大字面量 IR 溢出）/泛型 null-join（新增 mixed_types 套件 20 断言，负向增至 22）；同日补全类型后缀链（T?[] 全组合支持；T?? 字面写出改为报错拒绝——见"类型后缀链实现"节——并顺带修复 #94 同名函数重复定义静默通过）
 
 ---
 
@@ -54,6 +54,178 @@
 - **R9 Bug #12 `Ident("self")`**：trait 默认方法特化时 Sema 将 self 注册为 "void"，`trait_self_type` 覆盖是语言级必要机制，非 bug workaround。已补充注释说明。
 - **R10 Bug #1 `ty_meta.is_none()`**：在 Str 和 Nullable 已处理后，`scalar_meta = None` 是复合类型的充要条件（scalar_meta 是标量类型的单一真相源）。已补充注释说明。
 - **R11 Bug #49 `current_function_has_defer`**：含 defer 的函数需要 WriteBack 是 defer 语义的必要机制（defer body 通过原始节点 ID 读取变量），非特例判断。保留。
+
+
+---
+
+## 2026-08-14 主动探测发现（#86-#91）
+
+> 背景：43 个既有功能套件 ALL PASSED 的状态下，用新写探测程序发现的 6 个 bug，全部当日修复。
+> 新增回归：tests/functional/{cast_f128, precedence, stmt_boundary, missing_return} + tests/negative（负向 harness，12 用例）。
+
+### Bug #86：整数/bool → f128 转换全部错误（P0）
+
+- **现象**：`3i128 as f128` → 5.78e-34（= 3×2⁻¹¹²）；i8..u128 全部整数源中招；`true as f128` → 0；float→f128 正常。
+- **根因**：`Value.rs` `F128::from_i128/from_u128` 调 `pack(sign, 0, abs, false)`，而 pack 契约为 `value = mant × 2^(exp-112)`，应传 `exp=112`。附带：`as_f128` 缺 Bool 分支落入 `_ => from_f64(0.0)`。
+- **修复**：`pack(sign, 112, abs, false)`；`as_f128` 增加 `ValueTag::Bool => 1.0/0.0` 分支。
+- **验证**：cast_f128 套件 26 用例（各整型源、2 的幂、u128max、负数、bool、f128↔整型往返、f128 算术）ALL PASSED。
+
+### Bug #87：移位优先级低于比较运算符（P1）
+
+- **现象**：`1u32 << 31 == b` → 1（解析为 `1u32 << (31 == b)`，bool 静默转 0/1 作移位量）；`1 << 3 > 4` → 1；`16 >> 2 == 4` → 16。
+- **根因**：`Parser.rs` 优先级表 `SHIFT_PREC=7` 排在 `EQUALITY_PREC=8`、`COMPARISON_PREC=9` 之下；C/Rust 惯例移位高于比较。注：`& ^ |` 低于 `==` 为 C 风格设计（保留，已文档化）。
+- **修复**：重排为 EQUALITY=7、COMPARISON=8、RANGE=9、SHIFT=10（位于 ADDITION=11 之下），其余关系不变。
+- **验证**：precedence 套件 18 用例 ALL PASSED（含 C 风格 `flags & MASK == MASK` 的文档化断言）；全套件无回归。
+
+### Bug #88：语句边界丢失（P0）
+
+- **现象**：`;` 是空白且换行不阻断后缀解析，前一语句尾表达式把下一行开头的 token 当作自己的后缀：
+  - `val a = 5` 换行 `(a + 1)` → `5(a + 1)` 调用 → "undefined variable a"（a 在自己初始化器中）
+  - `val n = 2` 换行 `[n, n+1]` → `2[n, n+1]` 索引 → parse error（**计算局部后返回数组字面量的函数写不出**）
+  - `val x = 5` 换行 `-3` → 合并为 `5 - 3`（叠加 #89 时静默返回垃圾 2.71875f16）
+- **根因**：与 Bug #53 同族；#53 只对 Block/If/Match + Minus 打了补丁，`(`/`[` 后缀与任意 LHS 的 Minus 未保护。
+- **修复**：新增 `postfix_opens_new_statement()`（后缀 token 与前一 token 行号不同 = 新语句）：parse_postfix 的 LParen 调用后缀与 LBracket 索引后缀不再跨行挂接；parse_binary 对 Minus/Ampersand 增加同样的跨行守卫。同行调用/索引/多行参数不受影响。
+- **验证**：stmt_boundary 套件 17 用例（括号尾/双括号/数组尾/负数尾/括号 Elvis/同行调用/跨行参数/同行索引与链式调用）ALL PASSED。
+
+### Bug #89：非 void 函数缺尾表达式不报错（P1）
+
+- **现象**：`fun f(): i32 { val x = 9 }` 编译通过，运行返回垃圾 `2.71875f16`；str 版返回 `Ok(void)`（Throw 值泄漏）。Unify 的 Void 相容规则（nullable/throw 设计需要）使类型层无法拦截，必须 AST 结构层检查。
+- **修复**：`Helpers.rs` 新增 `check_missing_return_value`（含递归遍历器，Lambda/defer 边界止步）：声明的返回类型（解一层 Async 后）非 void、body 为 Block、无尾表达式、无 `return value`/`throw`、且无发散 `loop`（无 break 的 `loop` 永不正常返回）时报错。接入点：check_decl 的 FunDecl、类型方法、trait 默认方法（ModuleEnv.rs）、lambda（ExprInfer.rs）。
+- **验证**：missing_return 套件 13 个合法形态（尾表达式/块内 return/throw/void/发散 loop/loop 内 return/match 尾/lambda 尾/lambda return/Async<void>）ALL PASSED；负向 5 用例（tests/negative/missing_return_*）诊断正确。
+
+### Bug #90：f128 除法低尾数位留垃圾（P1，修复 #86 时由新测试发现）
+
+- **现象**：`6.0f128 / 4.0f128` 打印 `1.5f128` 但 `== 1.5f128` 为 false；`6/4 == 3/2` 为 true（相同垃圾位）、`3/2 == 1.0+0.5` 为 false（加法精确）。f128 比较按设计是位级比较（R7），故除法必须产生规范舍入位。
+- **根因**：`div_f128` 的 256 位分子构造 `(ma >> 14, ma << 14)` 不等于 `ma × 2¹¹⁴`——lo 半部应为 `(ma & 0x3FFF) << 114`（ma 只有低 14 位落在 lo，其余进位到 hi）；原写法把 ma 的中间位放错位置，商的低 15 位混入垃圾（1.5 + 2⁻¹⁰⁰ 量级），to_f64 打印时被舍入掩盖。
+- **修复**：`numer_lo = (ma & 0x3FFF) << 114`。rem_f128 经 div_f128 一并修复。
+- **验证**：cast_f128 套件 5 条位级精确断言（3/2、6/4、1/2、10/4、差为零）ALL PASSED。
+
+### Bug #91：lambda 内 return 与外层函数类型比对（P2，修复 #89 时由新测试发现）
+
+- **现象**：`fun make(): IntFn { fun(): i64 { if true { return "s" } 0i64 } }` 报 `return type mismatch: expected '() -> i64', found 'i64'`——return 被拿去和外层函数的 IntFn 比对。
+- **根因**：ExprInfer 的 Lambda 分支推断 body 时未设置 `self.expected_return`，Stmt::Return 沿用了外层函数的期望类型。
+- **修复**：lambda 有 `: T` 标注时，body 推断前设置 `expected_return = Some(T)`，推断后恢复。lambda 无标注仍走原有报错路径。
+- **验证**：missing_return 套件 lambdaReturn 用例 + negative/lambda_return_checked_against_lambda.kz 通过。
+
+### Bug #92：range 运算符 `a..b` 从未可用（P0）
+
+- **现象**：任何 `0..5`、`a..b`（i32 变量）表达式都报 `range operand must be integer: type mismatch`（span 0:0）；全套件无 range 用例，属零覆盖死功能（IR 降级到 `range_iter` 与 stdlib RangeIterator 基建一直完整）。
+- **根因**：sema 的 Range 分支要求操作数 `try_widen_unify(i64, x)`，而 Bug #60 的全面严格化已删除隐式数值提升——i32/无后缀字面量（默认 i32）全部被拒。
+- **修复**：sema 只要求操作数为任意整数类型（非整数报 `range start/end operand must be an integer type`，带正确 span）；IR 降级时把操作数包在显式 i64 cast 节点中（`make_i64_cast_node`，CF_CAST_SCALAR → i64），与 RangeIterator 的 i64 表示精确对接。
+- **验证**：ranges 套件 13 用例（`..`/`..=`、i32/u8 变量操作数、空 range、单元素、break/continue、嵌套、循环变量算术、str `.iter()` 迭代）ALL PASSED；负向 range_float_operand 用例通过。注意：循环变量是 i64，与 i32 混算遵循严格位宽规则（需显式 cast）。
+
+### Bug #93：`for c in <str>` 裸字符串迭代挂起引擎（P1）
+
+- **现象**：`for c in "ab" { ... }` 导致引擎无限循环（timeout）；`for x in [1,2,3]`（裸数组）则有正确的编译报错提示改用 `arr.iter()` / `str_iter(s)`。
+- **根因**：StmtInfer 的非迭代器检查只覆盖 `Type::Array` 与 `is_scalar()`；str 的 value_tag 是 Ref，不在 scalar 集合里，穿透检查后 IR 把 str 值直接传给 `.next`，`str.next` 不存在 → 死循环。
+- **修复**：`Type::Str` 加入非迭代器检查——挂起变为与数组一致的编译错误（"type 'str' does not implement Iterator; ... Use ... str_iter(s) for strings"）。`"abc".iter()` 路径不受影响。
+- **验证**：ranges 套件 strIterFor 用例 + 负向 for_in_bare_str/for_in_bare_array 用例通过。
+
+### 类型后缀链实现：`T??` 与 `T?[]`（2026-08-14，特性补全）
+
+- **原限制**：`T??` 因词法将 `??` 解析为 Elvis 操作符而 parse error；`T?[]` 因 `?` 后缀循环不消费 `[` 而 parse error。
+- **实现**：
+  1. Parser：`parse_nullable_type` 与 `parse_cast_type` 统一为**交错后缀链**（`?` / `[]` / `[N]`，从左到右应用）。`i32?[]` = 元素可空数组，`i32[]?` = 可空数组，`i32?[]?` / `i32?[][]` 等组合均合法。
+  2. **`T??` 字面写出被 sema 拒绝**（type_from_ast 按 AST 形状检查：Nullable 直接包 Nullable 即报错，指引改用单个 `?` 或 ADT 表达两级缺席）。理由：静默折叠（初版实现）会让 Kotlin/TS 用户保持 Some(null) 的错误预期——直接报错教会真实模型。**类型机器内部仍折叠**（`Arena::make_nullable`）：泛型 `T?` 当 T 实例化为 X? 时、别名 `Alias?`（Alias=i32?）解析出嵌套时，均合法折叠——保证泛型组合闭合，`Alias?` 也不受影响（其内层是 Named 节点，非 Nullable 字面）。
+  3. 数组字面量元素级提升：`[1, null, 3]` 推断为 `i32?[]`（null 元素或 nullable 元素将元素类型提升为 nullable，基准取第一个非 null 元素类型）；`[1, 2]` 绑定到 `i32?[]` 注解时采纳注解的 nullable 元素类型。
+  4. for-in 守卫：元素可空的迭代器被拦截（见上方语法限制表）——迭代协议以 null 为结束哨兵，null 元素会被误判为迭代结束（实测在第一个 null 元素处提前终止），报错并指引索引迭代。索引路径（while/range）经测试正确。
+- **验证**：nullable_types 套件 30 用例（T?? 绑定/传参/返回/Elvis/赋值兼容、cast 位置、null 开头/全 null 字面量、null 元素读写、函数签名、`i32?[]?`/`i32?[][]`/`i32?[3]` 组合、流窄化）ALL PASSED；负向 for_in_nullable_elems 用例通过；全量回归 2362 断言 0 失败（missing_return 在批次中出现一次不可复现的 EXIT=101，13 次连续重跑 release+debug 全净，疑为环境瞬时干扰，留观）。
+
+### Bug #94：同模块同名函数重复定义静默通过（P1，nullable_types 套件编写中发现）
+
+- **现象**：`fun f(x: i32)` 与 `fun f(x: str)` 同模块共存，编译通过零告警——predeclare 的 `define` 是先到先得，后定义被静默丢弃，调用解析取决于定义顺序；泛型+非泛型混名时更引发 IR 阶段 "internal: missing ExprInfo for int literal" 内部错误。
+- **修复**：`predeclare_declarations` 内用局部 `seen_fns` 集合检测本次遍历中的重名 FunDecl，报 "duplicate definition of function 'f' in this module"（局部集合方案免疫任何模块被处理两次的假阳性；跨模块同名仍允许——各自独立 module_env）。
+- **验证**：负向 duplicate_function / duplicate_function_generic 用例通过；全量回归 2366 断言 0 失败。
+
+### Bug #95：复合赋值绕过严格数值检查（P0，混合扫描发现）
+
+- **现象**：`var x: i32 = 1; x += 2.0` 编译通过且 x 保持 1（**赋值被静默丢弃**）；`x += 2i64` 编译通过且静默跨位宽计算为 3。等价的二元形式均正确报错。
+- **根因**：StmtInfer 的 CompoundAssignment 分支只对 target/value 各做一次 infer_expr，未调用 check_numeric_binop_compat / peer_type_binary；IR 侧复合赋值在类型不符时静默不写入。
+- **修复**：镜像二元路径——数值双方做 compat 严格检查 + 字面量经 peer_type_binary 适配（`u8_var += 2` 保持可用）；非数值对做 unify 检查报 compound assignment type mismatch。
+- **验证**：mixed_types 套件 compound 三用例 + 负向 compound_int_float / compound_cross_width。
+
+### Bug #96：peer 字面量适配不写回 ExprInfo（P1，混合扫描发现）
+
+- **现象**：`val y: i64 = 5; y + 500000500000` → IR 阶段 integer literal out of range for i32；`y == 500000500000` 同样失败。注解路径与后缀字面量正常。
+- **根因**：peer_type_binary 只作用于 unify 约束层；字面量 ExprInfo 保持默认 i32，IR 编译期常量解析（Bug #21 机制）按 ExprInfo 解析 → 溢出。值在 i32 范围内时隐式截断恰好正确，从未暴露。
+- **修复**：peer 适配后对字面量侧 store_expr_info 重写类型（算术与比较两处）。
+- **副作用与处置**：暴露 nullable 套件一处类型混用（str.len(): usize 配 -1 默认值，旧路径靠 null 短路掩盖）——测试改为 ?? 0 == 0。
+- **验证**：mixed_types 大字面量用例 + nullable 全量回归。
+
+### 泛型 null-join 规则（混合扫描发现，一并修复）
+
+- **现象**：`pick<T>(a: T, b: T); pick(null, 5)` 报 ambiguous inference（turbofish 也绕不过）。
+- **根因**：null 字面量推断为 Nullable<未约束新变量>，与 i32 构成求解器双候选 → 误判歧义。
+- **修复**：Solver.finalize_solution 增加 null-join：候选集恰为 {nullish, X}（nullish = Null 或内部未解析的 Nullable）时解析为 X?；内部为具体类型的 Nullable（nullable 变量）不参与 join（保持 #60 变量不隐式提升的严格性）。
+- **验证**：mixed_types nullJoin 两方向用例。
+
+### Bug #97：尾位置 `expr?` 丢失 Ok 包装（P0，dogfood_json 发现）
+
+- **现象**：`fun outer(): Throw<i32,E> { inner()? }`（尾表达式直接传播）——outer 返回的是**解包后的值**而非 Throw，调用方 `match r { Ok(v) => ...; E(m) => ... }` 落入 compute_match_fallback panic。`val v = inner()?; Ok(v)` 语句形式正常，因此微测试从未暴露。
+- **根因**：compute_propagate 按设计解包 Ok（服务于语句/取值场景）；当传播表达式恰为函数尾表达式时，解包值直接成为函数返回值，而 sema（unify_return_type 的 Throw 内层解包规则）与调用方都期望 Throw 包装。
+- **修复**：Propagate 降低时若 `in_tail_position && fn_returns_throw`，在传播节点外套 `CF_THROW_OK`（compute_throw_ok）重新包装；Err 路径已通过 Return 控制信号提前退出，不受影响。fn_returns_throw 的来源：顶层/trait 默认函数用 sema FuncSigInfo（handle_returns_throw，含 Async 层解包 + 无效 handle/detail 守卫——部分预声明异步签名的 detail 是 u32::MAX 占位）；类型方法用返回类型 AST（type_ref_returns_throw）；lambda 用其 ExprInfo 的 Fn 返回类型。经由 compile_function_body 新参数传递并 save/restore。
+- **验证**：顶层/方法/if-链臂尾传播最小用例全过。
+
+### Bug #98：Throw 错误臂用户构造器模式永不匹配（P0，dogfood_json 发现）
+
+- **现象**：`type MyErr = MyErr(str)`、`fun f(): Throw<i32, MyErr> { throw MyErr("x") }`，调用方 `match r { Ok(v) => ..; MyErr(e) => .. }` ——MyErr 臂运行时永不匹配（值是 ThrowVal(Err)），落 fallback panic；通配臂 `_` 和拼写为 `Error`/`Err` 的臂正常。sema 不报错（认为臂覆盖错误侧），纯运行时失配。
+- **根因**：compute_pattern_ctor_match 的 ThrowVal 分支只接受 ctor_name == "Error"/"Err"；用户错误类型的构造器模式没有按载荷匹配的路径。
+- **修复**：Err 载荷非 Error/Err 名时，按**载荷的构造器**匹配（Adt/Newtype/Record 三种），与 `Error(v)` 子模式绑定载荷的既有约定一致。
+- **验证**：newtype/ADT/闭包路径错误臂全部命中。
+
+### Bug #99：方法内 record 字段读写被帧机制破坏（P0，**未修复**，dogfood_json 发现）
+
+- **现象**（最小复现见 tests/functional/dogfood_json/README.md）：
+  1. 方法内顺序两次 `pos = pos + 1`（无循环）→ **正确**（2）；
+  2. while 循环 4 次 `pos = pos + 1` → **pos = 1**（只剩一次）；
+  3. 循环内 if/else 分别 +1/+10 → **pos = 10**（各轮读到的都是初始 record，最后写者胜）；
+  4. 解析器场景：skip_ws 对非空白字符前进、`data[pos]` 读到旧/越界字节（unexpected:117 / index OOB）。
+  局部变量（var i）在同结构下全部正确——**只有 record 字段（implicit this 写）受影响**。
+- **根因分析**：
+  - 写路径：implicit-this 字段写在 Assign.rs 编译为 CF_RECORD_FIELD_SET，且 set 节点**原本未接入 current_effect 链**（已补链接，见下），读写顺序无保证；
+  - compute_record_field_set 设计为**就地改共享 Arc**（unsafe 穿透引用计数，注释明确为迭代器 next() 模式服务——该模式走尾递归调用，能工作）；
+  - 但 **while/loop 循环体的帧快照/重置机制**（Frame reset_loop_iteration / Subgraph switch_subgraph 的 value_table reset）与就地修改语义冲突：每轮迭代恢复快照，就地修改随之丢失或与重置后的读乱序。effect 链补齐后症状变化（错值→OOB）印证是调度/别名层面的深层问题。
+  - 影响面：stdlib 中 BufReader.read_line、Dir 遍历、TcpStream.read_until 等大量方法在循环内写字段——**这些代码从未被任何测试运行过**（无 IO 测试），#99 一旦修复即是它们的首次正确性验证。
+- **已做的部分修复（保留）**：Assign.rs implicit-this 分支补接 effect 链（独立正确，缓解乱序）。
+- **修复方向**（下次专项）：(a) 排查循环体帧对 Value::Ref 的快照/重置是否深拷 record，改为共享 Arc；(b) 或将 implicit-this 字段写改为函数式更新 + 变量重绑（复用局部变量的 writeback/loop-carried 机制，该机制已被证明正确）。二选一需要与"迭代器尾递归模式必须继续工作"的语义对齐。
+- **dogfood_json 套件**：完整 JSON 解析器（~400 行，递归下降+转义+错误路径 36 断言）已就绪，kuzo.toml 改名 disabled 待 #99 修复后启用。#97/#98 修复使其中标量/错误路径用例已可通过；数组/对象解析因 #99 阻塞。
+
+### Bug #99 修复 + Bug #100 修复（2026-08-14 续,dogfood_json 追踪）
+
+**#99 修复**（两部分）：
+1. Ir.rs 新增 `aliasing_read_cfs()`（FIELD_GET/ARRAY_INDEX/ARRAY_LEN/PATTERN_ADT_FIELD_GET）+ `has_inplace_mutators(graph)`；analyze_loops 与 optimize() 在图中存在 FIELD_SET/ARRAY_STORE/DEREF_WRITE 时将别名读移出 pure 集合——不 LICM 外提、不 CSE 合并。
+2. Assign.rs implicit-this 字段写接入 current_effect 链（后续同方法内字段读在写之后执行,如指数 if 读 pos）。
+
+**#100 修复**（四部分）：
+1. Schedule.rs LoopBody 帧复用路径：不再置空 parent_frame_ptr,直接指向在手的循环帧（Box 地址跨 remove/insert 稳定）;root 沿用循环帧的 root。
+2. Frame.rs reset_loop_iteration：同上,体帧链指向循环帧而非置空。WriteBack Path1 恢复对循环帧的写回,条件重算读到新值。
+3. Builder 新增 var_home(变量名→(规范槽,是否函数级声明));compile_while_subgraph 在编译条件前 `rebind_modified_vars_to_home`——循环体中赋值的**函数级**变量在条件中改读规范槽（writeback 的目标槽,每轮迭代被更新）。收集器不递归嵌套循环（内层循环自己的条件在内层注册时处理）。
+4. var_home 按函数进出保存/清空（防跨函数污染——曾把 stdlib 函数里的同名变量 home 写进用户函数的 writeback 目标）。
+
+**诊断技巧**：event loop stuck(guard=2亿)= 活锁而非饿死;在 process_frame 按 frame 计数、护栏触发时 dump top 帧,直接看到哪个帧被处理上亿次（While 帧 suspended、其 LoopBody 完成三千万次 → 无限迭代而非死等）。KUZO_DEBUG_WB=1 可追踪 WriteBack 落点。
+
+**#100 残留边角（已表征,未修）**：
+- 负指数（"25e-2"→25）：str_to_f64 中跨迭代绑定读落后一轮（exp 段 if 读到上一轮的 i）,确定性非竞态。
+- edge_stress 冒泡排序 2 断言：rebind 与前置循环上下文（万次循环+千元素数组构建之后的嵌套循环）交互;KUZO_NO_REBIND=1 时通过但 #100 形状回归。环境开关：KUZO_NO_REBIND / KUZO_NO_REUSECHAIN。
+- dogfood_json 中 utf-8 多字节段/嵌套数组 nullable 方法调用断言:暂从套件移除,待上述边角修复后恢复。
+
+**验证**：loop_nesting 套件（#99 三形状 4/4/31 + #100 三形状）7 断言 ALL PASSED;dogfood_json 36 断言 ALL PASSED;全量 2413 断言 + 负向 22 通过（仅 edge_stress 上述 2 断言失败）;debug 构建无 panic。
+
+### Bug #100 残留边角修复 + Bug #101（2026-08-14 第三批）
+
+**残留1 负指数**——查实为 dogfood 测试自身算式错误（mag = 0 - exp 使循环零次），已改 mag = exp；但调查驱动了三处真实引擎修复并全部保留：
+1. Stmt.rs While/Loop/For 编译完成后 `rebind_modified_vars_to_home(body)`——循环后的语句（如 `if exp != 0`）曾读循环体内链中节点（其帧值是陈旧快照）而非规范槽。
+2. rebind 改为在"名字所在的 scope 层"重绑——if 分支作用域内的重绑曾随分支作用域弹出而丢弃。
+3. Subgraph.rs start_subgraph same_function 路径创建子帧时立即用 parent_frame 接链——原"由 setup_frame_chain 稍后设置"在 caller 正在处理（不在 map）时永不生效。
+
+**残留2 edge_stress 冒泡 2 断言**——根因：var_home 按名字首次绑定（entry().or_insert），同名变量二次声明（"si"先驱动求和循环、再声明驱动冒泡外层）时 home 仍是第一次的节点，第二次的初值 0 写不进 home 槽，冒泡从第一次的终值（3/1000）起跑。修复：Stmt.rs ValDecl/VarDecl 改用新 `declare_var`（bind + 强制重置 var_home）。
+- 事故记录：定位期间 edge_stress/src/Main.kz 被前缀二分覆盖，已按原始断言清单重建（断言名与语义不变，实现等价重写，文件头注明）。
+
+**残留3 utf-8 段/嵌套数组断言**——
+- utf-8：新引擎 bug #101（见上表），Parser.rs unescape 慢路径改为整字符 decode（chars().next() + len_utf8()）。修复后 ""你好"" chars=4 bytes=8 正确。
+- 嵌套数组断言：a0.len() 在 J[]? 上返回 void（方法调用不跟随流窄化——方法调用在 nullable 上的类型化是既有空白），改用 (a0 ?? []).len() 解包。
+
+**验证**：dogfood_json 37 断言 ALL PASSED（含全部此前移除的断言）；loop_nesting 扩至 10 断言（+同名重声明/+循环后读/+转义 UTF-8）；全量 functional 2424 断言 0 失败 + 负向 22/22；debug 构建三套件 0 panic。
 
 ---
 
@@ -131,6 +303,23 @@
 | P2 | #61 | 类型别名在 mismatch 报错中被静默展开 | 已修复 (2026-08-10) |
 | P2 | #67 | 移位越界行为不明确（1 << 32 返回 1） | 已修复 (2026-08-10) |
 | P2 | #68 | 函数类型后缀数组注解解析优先级错误 | 已修复 (2026-08-10) |
+| P0 | #86 | 整数/bool → f128 转换全部错误（×2⁻¹¹²，bool 恒 0） | 已修复 (2026-08-14) |
+| P1 | #87 | `<<`/`>>` 优先级低于 `==`/`<`（`1<<31==b` 解析为 `1<<(31==b)`，bool 静默转移位量） | 已修复 (2026-08-14) |
+| P0 | #88 | 语句边界丢失：`(`/`[`/`-` 开头的语句并入前一语句（调用/索引/减法），数组字面量作尾表达式直接编译失败 | 已修复 (2026-08-14) |
+| P1 | #89 | 非 void 函数缺尾表达式不报错，运行时返回垃圾（i32→2.71875f16、str→Ok(void)） | 已修复 (2026-08-14) |
+| P1 | #90 | f128 除法低尾数位留垃圾（`6.0/4.0` 打印 1.5 但与 1.5f128 位级不等） | 已修复 (2026-08-14) |
+| P2 | #91 | lambda 内 `return` 与外层函数返回类型比对（应为 lambda 自身类型） | 已修复 (2026-08-14) |
+| P0 | #92 | `a..b` range 运算符从未可用（sema 要求隐式 widen 到 i64，与 #60 严格化冲突，报 "range operand must be integer"） | 已修复 (2026-08-14) |
+| P1 | #93 | `for c in "abc"` 裸字符串迭代导致引擎无限挂起（str 绕过非迭代器检查，`str.next` 不存在） | 已修复 (2026-08-14) |
+| P1 | #94 | 同模块同名函数重复定义静默通过（define 先到先得，后定义被丢弃；泛型+非泛型混名引发 IR "missing ExprInfo" 内部错误） | 已修复 (2026-08-14) |
+| P0 | #95 | 复合赋值完全绕过严格数值检查：`x += 2.0`（i32+=f64）编译通过且**静默丢弃赋值**；`x += 2i64` 静默跨位宽 | 已修复 (2026-08-14) |
+| P1 | #96 | peer 字面量适配只写 unify 约束不写回 ExprInfo：`i64变量 + 500000500000` 的字面量被 IR 按 i32 解析 → 大字面量溢出报错（小值恰好无碍所以从未暴露） | 已修复 (2026-08-14) |
+| P0 | #97 | 函数尾表达式直接写 `expr?` 返回值丢失 Ok 包装——调用方 match Ok/E 落 fallback panic（语句形式 `val v = expr?` 正常，微测试从未覆盖尾传播形态） | 已修复 (2026-08-14) |
+| P0 | #98 | Throw 错误臂的**非 Error/Err 名**构造器模式（如自定义 `MyErr(e)` 臂）运行时永不匹配 → fallback panic；只有拼写为 Error/Err 的臂有效（dogfood 发现） | 已修复 (2026-08-14) |
+| P0 | #99 | 方法内对 record 字段（this.pos 类）的读写被帧机制破坏：循环内多次赋值只剩最后一次（pos=1 而非 4）——根因一为 LICM 把字段读当纯不变量外提（写为就地改共享 Arc，对数据流图不可见），二为 implicit-this 字段写未接 effect 链 | 已修复 (2026-08-14) |
+| P0 | #100 | 嵌套循环（前导循环 + if + if 内同变量循环，含跨方法调用）调度器无限空转（event loop stuck 2 亿护栏）；根因双：①复用 LoopBody 帧时 parent_frame_ptr 置空且无法重建（caller 正在处理不在 map），WriteBack 无法写回循环帧；②while 条件编译绑定到链中节点而非变量规范槽（writeback 只更新规范槽），条件每轮读陈旧快照 | 已修复 (2026-08-14,残留边角见下) |
+| P1 | #101 | 带转义字符串的 UTF-8 双重编码：unescape_string 慢路径按单字节 Latin-1 推入（bytes[j] as char），多字节字符被拆成多个 U+00XX 再重编码（你好 → U+00E4 U+00BD U+00A0 → 6 字节）；纯多字节字符串走零拷贝快路径不受影响（dogfood 发现） | 已修复 (2026-08-14) |
+| P1 | — | 泛型函数实参含 null 字面量时求解器报 ambiguous inference（null 推断为 Nullable<未约束变量>，与具体类型构成双候选） | 已修复 (2026-08-14, null-join 规则) |
 
 ---
 
@@ -1320,8 +1509,10 @@
 | 限制 | 说明 | 绕过方式 |
 |------|------|---------|
 | 闭包不支持显式返回类型标注 | `fun(n: i32): i32 { ... }` 解析错误 | 省略返回类型 `fun(n: i32) { ... }` |
-| `T??` 双 nullable 后缀不可用 | 词法将 `??` 解析为 Elvis 操作符，`val x: i32?? = ...` 触发 parse error | 不使用双 nullable；或用显式包装类型 `type Opt = Opt(inner: i32?)` |
-| `T?[]` nullable 元素数组不可用 | `parse_nullable_type` 的 `?` 后缀循环不消费 `[`，`val x: i32?[] = ...` 触发 parse error: expected '=' | 改用 `i32[]?`（nullable 数组，语义不同）或显式包装类型 |
+| `T??` 双 nullable 被拒绝 | nullable 无 Some 构造器,"包装的 null"不可表示,嵌套无意义；静默折叠会让 Kotlin/TS 用户带着 Some(null) 的错误预期写代码 | 用单个 `?`；两级缺席用 ADT：`type Hit<T> = | Missing | Found(T?)`。泛型 `T?` 当 T:=X? 时在类型机器内部折叠（合法） |
+| for-in 不能直接迭代元素可空的数组 | 迭代协议以 null 为结束哨兵（`Iterator<T>.next() -> T?`），元素本身为 null 时无法与迭代结束区分（会在第一个 null 元素处提前终止，sema 已改为报错拦截） | 索引迭代：`var i: usize = 0; while i < arr.len() { val e = arr[i] ... }` 或 `for i in 0..arr.len()` |
+| 泛型 record/ADT 的字段类型不代入实例化类型参数 | `type Box<T> = Box(v: T)`，`b: Box<i32[]>` 后 `b.v.len()` 报 no method on type T——字段类型 T 不随类型实参替换（`T[]` 参数有 Array 特判所以可用） | 泛型函数内用 `T[]` 形态；或将字段值显式绑定到注解变量后再调方法；彻底解法是 trait 约束泛型（设计项） |
+| 命名 record 类型不支持 record extend `(...base, f: v)` | 命名 record 在类型系统中是 Type::Adt（字段走 field_id_map），extend 只支持匿名 record（Type::Record）；对命名 record 使用报 "record extend requires record type" | 用匿名 record `(x: 1, y: 2)` 做 extend，或显式重构 `Pt(base.x, 99)` |
 | 数组层不做 numeric widening | `try_widen_unify` 无 Array 分支，strict `unify` 递归比元素类型；`val x: i64[] = [1i32]` 报 mismatch（即便 i32→i64 可提升）。注：Throw/Nullable 包裹的 numeric 元素在 widening 分支内会提升，但数组层先失败，故 `Throw<i64,Error>[] = [Ok(1i32)]` 仍 mismatch | 数组元素类型与注解严格一致；需 widening 时逐元素显式转换 |
 
 ---

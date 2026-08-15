@@ -1,0 +1,123 @@
+// 功能验证：非 void 返回类型的合法形态（回归：Bug #89 正向面）
+// Bug #89: 声明非 void 返回类型但函数体无尾表达式/return/throw 曾静默编译并在
+// 运行时返回垃圾（i32 → 2.71875f16、str → Ok(void)）。修复后这类声明报编译错误
+// （负向用例见 tests/negative/cases/missing_return_*.kz）；本文件覆盖所有
+// 必须继续编译通过的合法形态。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+type Err = Err(str)
+
+// ── 1. 尾表达式 ──
+fun withTail(): i32 { val x: i32 = 9; x }
+
+// ── 2. 块内 return ──
+fun withReturn(n: i32): i32 {
+    if n < 0 {
+        return 0 - 1
+    }
+    n
+}
+
+// ── 3. throw 满足（Throw 返回类型）──
+fun withThrow(n: i32): Throw<i32, Err> {
+    if n < 0 {
+        throw Err("neg")
+    }
+    Ok(n)
+}
+
+// ── 4. void 函数无尾（不检查）──
+fun voidNoTail(): void { val x: i32 = 1 }
+
+// ── 5. 无条件 loop 无 break（发散，永不正常返回）──
+var spin: i32 = 0
+fun divergingLoop(): i32 {
+    loop {
+        spin = spin + 1
+        if spin > 3 {
+            return spin
+        }
+    }
+}
+
+// ── 6. loop 内 return（stdlib copy_to 模式）──
+fun loopReturnInside(n: i32): i32 {
+    var i: i32 = 0
+    loop {
+        if i >= n {
+            return i
+        }
+        i = i + 1
+    }
+}
+
+// ── 7. match 作为尾表达式 ──
+fun matchTail(n: i32): i32 {
+    val r = match n {
+        0 => 100
+        _ => n * 2
+    }
+    r
+}
+
+// ── 8. lambda 带尾表达式 ──
+type IntFn = () -> i32
+fun lambdaTail(): IntFn {
+    fun(): i32 { val x: i32 = 4; x }
+}
+
+// ── 9. lambda 带内 return ──
+fun lambdaReturn(): IntFn {
+    fun(): i32 {
+        if true {
+            return 7
+        }
+        0
+    }
+}
+
+// ── 10. async void 无尾（Async<void> 不要求值，stdlib ticker 模式）──
+pub async fun asyncVoidNoTail(): Async<void> {
+    val x: i32 = 1
+}
+
+fun main(): void {
+    check(withTail() == 9, "tail expression")
+    check(withReturn(0 - 5) == 0 - 1, "return inside if")
+    check(withReturn(3) == 3, "return not taken")
+    val t1 = withThrow(0 - 1)
+    val t1ok = match t1 {
+        Ok(v) => false
+        _ => true
+    }
+    check(t1ok, "throw path")
+    val t2 = withThrow(5)
+    val t2v = match t2 {
+        Ok(v) => v
+        _ => 0 - 1
+    }
+    check(t2v == 5, "ok path")
+    voidNoTail()
+    check(divergingLoop() == 4, "diverging loop with return")
+    check(loopReturnInside(6) == 6, "loop return inside")
+    check(matchTail(0) == 100, "match tail zero")
+    check(matchTail(7) == 14, "match tail other")
+    val f1 = lambdaTail()
+    check(f1() == 4, "lambda tail")
+    val f2 = lambdaReturn()
+    check(f2() == 7, "lambda return")
+    asyncVoidNoTail()
+    check(spin >= 4, "loop executed")
+
+    summary()
+}

@@ -1,0 +1,5 @@
+// EXPECT: double nullable 'T??' is not allowed
+fun main(): void {
+    val x = 7 as i32??
+    println("x")
+}

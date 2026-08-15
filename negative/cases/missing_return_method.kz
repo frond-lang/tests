@@ -1,0 +1,5 @@
+// EXPECT: missing return value
+type T = | T {
+    fun bad(): i32 { val x: i32 = 1 }
+}
+fun main(): void { println("ok") }

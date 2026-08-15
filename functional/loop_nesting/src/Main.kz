@@ -1,0 +1,178 @@
+// 回归锁定 Bug #99/#100 及其残留修复。
+// #99：LICM 外提别名读 + 字段写未接 effect 链（曾 pos=1 而非 4）。
+// #100：嵌套循环调度活锁（复用体帧链断裂 + 条件读链中节点而非规范槽）。
+// #100 残留修复：同名变量二次声明重置 home（declare_var）；循环后语句经规范槽读值
+//（负指数残留——后经查实为测试自身算式错误，但引擎链修复保留）；带转义字符串的
+// UTF-8 慢路径双重编码（Bug #101，见 dogfood_json 套件）。
+var failures: i32 = 0
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// ── #99：循环内 record 字段读写 ──
+type P = P(pos: usize) {
+    pub fun direct(): i32 {
+        var i: usize = 0
+        while i < 4 {
+            pos = pos + 1
+            i = i + 1
+        }
+        pos as i32
+    }
+    pub fun inIf(): i32 {
+        var i: usize = 0
+        while i < 4 {
+            if true {
+                pos = pos + 1
+            }
+            i = i + 1
+        }
+        pos as i32
+    }
+    pub fun branchy(): i32 {
+        var i: usize = 0
+        while i < 4 {
+            if i == 0u32 as usize {
+                pos = pos + 1
+            } else {
+                pos = pos + 10
+            }
+            i = i + 1
+        }
+        pos as i32
+    }
+}
+
+// ── #100：前导循环 + if + if 内同变量循环（曾调度器空转）──
+fun scanAfterLoop(s: str): i32 {
+    val b = s.bytes()
+    var i: usize = 0
+    while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+        i = i + 1
+    }
+    if i < b.len() {
+        i = i + 1
+        while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+            i = i + 1
+        }
+    }
+    i as i32
+}
+
+// ── #100：跨方法调用链中的同形状 ──
+type Q = Q(data: u8[], pos: usize) {
+    pub fun a(): str {
+        while pos < data.len() && data[pos] >= 48u8 && data[pos] <= 57u8 {
+            pos = pos + 1
+        }
+        b()?
+        "ok"
+    }
+    fun b(): Throw<i32, str> {
+        val s = "2.5"
+        val arr = s.bytes()
+        var i: usize = 0
+        while i < arr.len() && arr[i] >= 48u8 && arr[i] <= 57u8 {
+            i = i + 1
+        }
+        if i < arr.len() && arr[i] == 46u8 {
+            i = i + 1
+            while i < arr.len() && arr[i] >= 48u8 && arr[i] <= 57u8 {
+                i = i + 1
+            }
+        }
+        Ok(0)
+    }
+}
+
+// ── #100 残留：同名变量二次声明（曾使第二循环从残值起跑）──
+fun sameNameRedecl(): i32 {
+    val arr: i32[] = [10, 20, 30]
+    var si: i32 = 0
+    var total: i32 = 0
+    while si < arr.len() {
+        total = total + arr[si]
+        si = si + 1
+    }
+    val sort_arr: i32[] = [5, 3, 1, 4, 2]
+    var si: i32 = 0
+    while si < sort_arr.len() {
+        var sj: i32 = 0
+        while sj < sort_arr.len() - 1 - si {
+            if sort_arr[sj] > sort_arr[sj + 1] {
+                val tmp = sort_arr[sj]
+                sort_arr[sj] = sort_arr[sj + 1]
+                sort_arr[sj + 1] = tmp
+            }
+            sj = sj + 1
+        }
+        si = si + 1
+    }
+    total + sort_arr[0] * 100 + sort_arr[4]
+}
+
+// ── 循环后语句读循环赋值变量（负指数残留形状）──
+fun postLoopRead(s: str): f64 {
+    val b = s.bytes()
+    var i: usize = 0
+    var int_part: f64 = 0.0
+    while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+        int_part = int_part * 10.0 + (b[i] - 48u8) as f64
+        i = i + 1
+    }
+    var exp: i64 = 0
+    var exp_neg = false
+    if i < b.len() && (b[i] == 101u8 || b[i] == 69u8) {
+        i = i + 1
+        if i < b.len() && b[i] == 45u8 {
+            exp_neg = true
+            i = i + 1
+        }
+        while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+            exp = exp * 10i64 + (b[i] - 48u8) as i64
+            i = i + 1
+        }
+    }
+    var value = int_part
+    if exp != 0 {
+        var pow: f64 = 1.0
+        var mag = exp
+        var k: i64 = 0
+        while k < mag {
+            pow = pow * 10.0
+            k = k + 1
+        }
+        if exp_neg {
+            value = value / pow
+        } else {
+            value = value * pow
+        }
+    }
+    value
+}
+
+// ── #101：带转义字符串中的多字节 UTF-8（曾双重编码）──
+fun escapedUtf8Len(): i32 {
+    val s = "\"你好\""
+    (s.len() * 1000 + s.bytes().len()) as i32
+}
+
+fun main(): void {
+    check(P(0).direct() == 4, "#99 direct field loop = 4")
+    check(P(0).inIf() == 4, "#99 field loop in if = 4")
+    check(P(0).branchy() == 31, "#99 branchy field loop = 31")
+    check(scanAfterLoop("2.5") == 3, "#100 loop+if+same-var loop = 3")
+    check(scanAfterLoop("25") == 2, "#100 loop+if no inner iters = 2")
+    check(Q("25".bytes(), 0).a() == "ok", "#100 cross-method chain")
+    check(sameNameRedecl() == 60 + 105, "same-name redecl two loops (sum 60 + sorted 1..5)")
+    check(postLoopRead("25e-2") == 0.25, "post-loop read neg exponent = 0.25")
+    check(postLoopRead("1e3") == 1000.0, "post-loop read pos exponent = 1000")
+    check(escapedUtf8Len() == 4008, "#101 escaped utf-8 chars=4 bytes=8")
+    summary()
+}

@@ -1,0 +1,6 @@
+// EXPECT: cannot be used on a non-nullable
+fun main(): void {
+    val x: i32 = 5
+    val y = x?
+    println("{y}")
+}

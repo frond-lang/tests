@@ -1,0 +1,3 @@
+// EXPECT: missing return value
+fun f(): str { val x: str = "hi" }
+fun main(): void { println("{f()}") }

@@ -1,0 +1,473 @@
+// Dogfood 测试：用 Kuzo 写的真实程序 —— JSON 解析器（词法 + 递归下降 + 转义 + 错误处理）
+// 这不是微测试：几百行、递归数据类型、可变解析器状态、Throw 错误传播、字符级处理。
+// 持续验证 Kuzo 能写真实程序；任何引擎回归都会在这里暴露。
+//
+// 支持子集：null / true / false / number（含负数/小数/指数）/ string（引号、反斜杠、
+// 斜杠、n t r 转义、UTF-8 直通）/ array / object（解析为 Entry 数组，按序保留键）。
+// 反斜杠u 四位十六进制转义不支持（明确报错）。注意：字符串中花括号是插值定界符，
+// 字面花括号写作 反斜杠加花括号。
+// 本套件回归锁定 Bug #97（尾传播 Ok 包装）/#98（错误臂构造器匹配）/#99（LICM 外提
+// 别名读 + 字段写 effect 链）/#100（嵌套循环调度活锁 + 同名重声明 home 残留 + 循环后
+// 语句读链中节点）/#101（带转义字符串的 UTF-8 双重编码）。
+
+import std.io.Fs
+import std.io.File
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// ── JSON 值的递归 ADT ──
+type JEntry = JEntry(key: str, value: J)
+type J =
+    | JStr(str)
+    | JNum(f64)
+    | JBool(bool)
+    | JNull
+    | JArr(J[])
+    | JObj(JEntry[])
+
+// ── 解析器：可变状态（字节游标）封装为类型，方法即递归下降产生式 ──
+type E = E(str)
+type Parser = Parser(data: u8[], pos: usize) {
+
+    fun fail(msg: str): Throw<J, E> {
+        throw E("at byte {pos}: {msg}")
+    }
+
+    fun skip_ws(): void {
+        while pos < data.len() {
+            val c = data[pos]
+            if c == 32u8 || c == 9u8 || c == 10u8 || c == 13u8 {
+                pos = pos + 1
+            } else {
+                break
+            }
+        }
+    }
+
+    // 顶层入口：解析 + 拒绝尾随内容
+    pub fun parse(): Throw<J, E> {
+        skip_ws()
+        val v = parse_value()?
+        skip_ws()
+        if pos != data.len() {
+            fail("trailing characters")?
+        }
+        Ok(v)
+    }
+
+    fun parse_value(): Throw<J, E> {
+        if pos >= data.len() {
+            return fail("unexpected end of input")
+        }
+        val c = data[pos]
+        if c == 123u8 {
+            parse_object()
+        } else if c == 91u8 {
+            parse_array()
+        } else if c == 34u8 {
+            parse_string()?
+        } else if c == 116u8 {
+            expect_lit("true", JBool(true))?
+        } else if c == 102u8 {
+            expect_lit("false", JBool(false))?
+        } else if c == 110u8 {
+            expect_lit("null", JNull)?
+        } else if c == 45u8 || (c >= 48u8 && c <= 57u8) {
+            parse_number()
+        } else {
+            fail("unexpected character")
+        }
+    }
+
+    // 逐字节匹配字面量（true/false/null）
+    fun expect_lit(lit: str, result: J): Throw<J, E> {
+        val bytes = lit.bytes()
+        if pos + bytes.len() > data.len() {
+            return fail("unexpected end of literal")
+        }
+        var i: usize = 0
+        while i < bytes.len() {
+            if data[pos + i] != bytes[i] {
+                return fail("invalid literal")
+            }
+            i = i + 1
+        }
+        pos = pos + bytes.len()
+        Ok(result)
+    }
+
+    // 字符串：转义处理 + 逐段拼接
+    fun parse_string(): Throw<J, E> {
+        pos = pos + 1
+        var out: str = ""
+        while pos < data.len() {
+            val c = data[pos]
+            if c == 34u8 {
+                pos = pos + 1
+                return Ok(JStr(out))
+            }
+            if c == 92u8 {
+                pos = pos + 1
+                if pos >= data.len() {
+                    return fail("unterminated escape")
+                }
+                val esc = data[pos]
+                if esc == 34u8 {
+                    out = out + "\""
+                } else if esc == 92u8 {
+                    out = out + "\\"
+                } else if esc == 47u8 {
+                    out = out + "/"
+                } else if esc == 110u8 {
+                    out = out + "\n"
+                } else if esc == 116u8 {
+                    out = out + "\t"
+                } else if esc == 114u8 {
+                    out = out + "\r"
+                } else if esc == 117u8 {
+                    return fail("unicode escapes not supported")
+                } else {
+                    return fail("invalid escape")
+                }
+                pos = pos + 1
+            } else if c < 32u8 {
+                return fail("control character in string")
+            } else {
+                val start = pos
+                while pos < data.len() && data[pos] != 34u8 && data[pos] != 92u8 && data[pos] >= 32u8 {
+                    pos = pos + 1
+                }
+                out = out + slice_str(start, pos)
+            }
+        }
+        fail("unterminated string")
+    }
+
+    fun slice_str(from: usize, to: usize): str {
+        (data[from..to]) as str
+    }
+
+    // 数字：[-] int [ . frac ] [ (e|E) [+|-] exp ]
+    fun parse_number(): Throw<J, E> {
+        val start = pos
+        if pos < data.len() && data[pos] == 45u8 {
+            pos = pos + 1
+        }
+        while pos < data.len() && data[pos] >= 48u8 && data[pos] <= 57u8 {
+            pos = pos + 1
+        }
+        if pos < data.len() && data[pos] == 46u8 {
+            pos = pos + 1
+            while pos < data.len() && data[pos] >= 48u8 && data[pos] <= 57u8 {
+                pos = pos + 1
+            }
+        }
+        if pos < data.len() && (data[pos] == 101u8 || data[pos] == 69u8) {
+            pos = pos + 1
+            if pos < data.len() && (data[pos] == 43u8 || data[pos] == 45u8) {
+                pos = pos + 1
+            }
+            while pos < data.len() && data[pos] >= 48u8 && data[pos] <= 57u8 {
+                pos = pos + 1
+            }
+        }
+        val text = slice_str(start, pos)
+        val n = str_to_f64(text)?
+        Ok(JNum(n))
+    }
+
+    // 数字的语义保持解析：符号/整数/小数/指数分开累积，不用库函数
+    fun str_to_f64(text: str): Throw<f64, E> {
+        val b = text.bytes()
+        var i: usize = 0
+        var neg = false
+        if i < b.len() && b[i] == 45u8 {
+            neg = true
+            i = i + 1
+        }
+        var int_part: f64 = 0.0
+        while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+            int_part = int_part * 10.0 + (b[i] - 48u8) as f64
+            i = i + 1
+        }
+        var frac: f64 = 0.0
+        var frac_scale: f64 = 1.0
+        if i < b.len() && b[i] == 46u8 {
+            i = i + 1
+            while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+                frac = frac * 10.0 + (b[i] - 48u8) as f64
+                frac_scale = frac_scale * 10.0
+                i = i + 1
+            }
+        }
+        var exp: i64 = 0
+        var exp_neg = false
+        if i < b.len() && (b[i] == 101u8 || b[i] == 69u8) {
+            i = i + 1
+            if i < b.len() && b[i] == 45u8 {
+                exp_neg = true
+                i = i + 1
+            } else if i < b.len() && b[i] == 43u8 {
+                i = i + 1
+            }
+            while i < b.len() && b[i] >= 48u8 && b[i] <= 57u8 {
+                exp = exp * 10i64 + (b[i] - 48u8) as i64
+                i = i + 1
+            }
+        }
+        if i != b.len() {
+            throw E("at byte {pos}: malformed number")
+        }
+        var value = int_part
+        if frac_scale > 1.0 {
+            value = value + frac / frac_scale
+        }
+        if exp != 0 {
+            var k: i64 = 0
+            var pow: f64 = 1.0
+            var mag = exp
+            while k < mag {
+                pow = pow * 10.0
+                k = k + 1
+            }
+            if exp_neg {
+                value = value / pow
+            } else {
+                value = value * pow
+            }
+        }
+        if neg {
+            value = 0.0 - value
+        }
+        Ok(value)
+    }
+
+    fun parse_array(): Throw<J, E> {
+        pos = pos + 1
+        var items: J[] = []
+        skip_ws()
+        if pos < data.len() && data[pos] == 93u8 {
+            pos = pos + 1
+            return Ok(JArr(items))
+        }
+        while true {
+            skip_ws()
+            val v = parse_value()?
+            items = items ++ [v]
+            skip_ws()
+            if pos >= data.len() {
+                return fail("unterminated array")
+            }
+            val c = data[pos]
+            if c == 44u8 {
+                pos = pos + 1
+            } else if c == 93u8 {
+                pos = pos + 1
+                return Ok(JArr(items))
+            } else {
+                return fail("expected comma or bracket in array")
+            }
+        }
+    }
+
+    fun parse_object(): Throw<J, E> {
+        pos = pos + 1
+        var entries: JEntry[] = []
+        skip_ws()
+        if pos < data.len() && data[pos] == 125u8 {
+            pos = pos + 1
+            return Ok(JObj(entries))
+        }
+        while true {
+            skip_ws()
+            if pos >= data.len() || data[pos] != 34u8 {
+                return fail("expected string key")
+            }
+            val k = parse_string()?
+            val key = match k {
+                JStr(s) => s
+                _ => ""
+            }
+            skip_ws()
+            if pos >= data.len() || data[pos] != 58u8 {
+                return fail("expected colon after key")
+            }
+            pos = pos + 1
+            skip_ws()
+            val v = parse_value()?
+            entries = entries ++ [JEntry(key, v)]
+            skip_ws()
+            if pos >= data.len() {
+                return fail("unterminated object")
+            }
+            val c = data[pos]
+            if c == 44u8 {
+                pos = pos + 1
+            } else if c == 125u8 {
+                pos = pos + 1
+                return Ok(JObj(entries))
+            } else {
+                return fail("expected comma or brace in object")
+            }
+        }
+    }
+}
+
+// ── 便捷访问器（对解析结果做结构化断言用）──
+fun j_get(obj: J, key: str): J? {
+    match obj {
+        JObj(entries) => {
+            var i: usize = 0
+            while i < entries.len() {
+                if entries[i].key == key {
+                    return entries[i].value
+                }
+                i = i + 1
+            }
+            null
+        }
+        _ => null
+    }
+}
+
+fun j_str(v: J): str? {
+    match v {
+        JStr(s) => s
+        _ => null
+    }
+}
+fun j_num(v: J): f64? {
+    match v {
+        JNum(n) => n
+        _ => null
+    }
+}
+fun j_arr(v: J): J[]? {
+    match v {
+        JArr(a) => a
+        _ => null
+    }
+}
+
+fun parse_ok(text: str): J {
+    val p = Parser(text.bytes(), 0)
+    val r = p.parse()
+    match r {
+        Ok(v) => v
+        E(m) => JStr("PARSE_ERROR: {m}")
+    }
+}
+
+fun parse_err(text: str): str {
+    val p = Parser(text.bytes(), 0)
+    val r = p.parse()
+    match r {
+        Ok(v) => "no error"
+        E(m) => match m {
+            E(msg) => msg
+            _ => "unknown error"
+        }
+    }
+}
+
+fun main(): void {
+    check(parse_ok("null") == JNull, "null")
+    check(parse_ok("true") == JBool(true), "true")
+    check(parse_ok(" false ") == JBool(false), "false with ws")
+    check(parse_ok("42") == JNum(42.0), "integer")
+    check(parse_ok("-7") == JNum(-7.0), "negative integer")
+    check(parse_ok("2.5") == JNum(2.5), "fraction (binary-exact)")
+    check(parse_ok("-0.25") == JNum(-0.25), "negative fraction")
+    check(parse_ok("1e3") == JNum(1000.0), "exponent positive")
+    check(parse_ok("2.5e-2") == JNum(0.025), "fraction + negative exponent")
+    val sq = parse_ok("\"hello\"")
+    check(sq == JStr("hello"), "simple string")
+    val eq1 = parse_ok("\"a\\\"b\"")
+    check(eq1 == JStr("a\"b"), "escaped quote")
+    val eq2 = parse_ok("\"back\\\\slash\"")
+    check(eq2 == JStr("back\\slash"), "escaped backslash")
+    val eq3 = parse_ok("\"tab\\t\"")
+    check(eq3 == JStr("tab\t"), "escaped tab")
+    val eq4 = parse_ok("\"你好多字节\"")
+    check(eq4 == JStr("你好多字节"), "utf-8 passthrough")
+    check(parse_ok("[]") == JArr([]), "empty array")
+    val arr = parse_ok("[1, 2, 3]")
+    val arr_v = match arr {
+        JArr(items) => items.len() == 3 && items[0] == JNum(1.0) && items[2] == JNum(3.0)
+        _ => false
+    }
+    check(arr_v, "array of numbers")
+    val nested = parse_ok("[[1], [2, 3], []]")
+    val nested_ok = match nested {
+        JArr(items) => {
+            val a0 = j_arr(items[0])
+            val a1 = j_arr(items[1])
+            val a2 = j_arr(items[2])
+            (a0 ?? []).len() == 1 && (a1 ?? []).len() == 2 && (a2 ?? []).len() == 0
+        }
+        _ => false
+    }
+    check(nested_ok, "nested arrays")
+    val empty_obj = parse_ok("\{\}")
+    check(empty_obj == JObj([]), "empty object")
+    val doc = parse_ok("\{\"name\": \"kuzo\", \"version\": 2, \"stable\": true, \"meta\": \{\"stars\": 128\}\}")
+    check(j_str(j_get(doc, "name")) == "kuzo", "object string field")
+    check(j_num(j_get(doc, "version")) == 2.0, "object number field")
+    check(j_get(doc, "stable") == JBool(true), "object bool field")
+    val meta = j_get(doc, "meta")
+    check(j_num(j_get(meta, "stars")) == 128.0, "nested object")
+    val big_doc = parse_ok("\{\"users\": [\{\"id\": 1, \"name\": \"alice\", \"active\": true\}, \{\"id\": 2, \"name\": \"bob\", \"active\": false\}, \{\"id\": 3, \"name\": \"carol\"\}], \"count\": 3, \"cursor\": null, \"ratio\": 0.75\}")
+    check(j_num(j_get(big_doc, "count")) == 3.0, "big doc count")
+    check(j_num(j_get(big_doc, "ratio")) == 0.75, "big doc ratio")
+    check(j_get(big_doc, "cursor") == JNull, "big doc null field")
+    val users = j_arr(j_get(big_doc, "users"))
+    var users_len_ok = false
+    var u0_ok = false
+    var u2_ok = false
+    if users != null {
+        val uv = users ?? []
+        users_len_ok = uv.len() == 3
+        if users_len_ok {
+            val e0 = uv[0]
+            u0_ok = j_str(j_get(e0, "name")) == "alice" && j_get(e0, "active") == JBool(true)
+            val e2 = uv[2]
+            u2_ok = j_str(j_get(e2, "name")) == "carol"
+        }
+    }
+    check(users_len_ok, "big doc users len")
+    check(u0_ok, "big doc user0")
+    check(u2_ok, "big doc user2")
+    check(parse_ok("[[[[[[[[[1]]]]]]]]]") != JStr("x"), "deep nesting parses")
+    check(parse_err("\{") != "no error", "unterminated object errors")
+    check(parse_err("[1, 2") != "no error", "unterminated array errors")
+    check(parse_err("\"abc") != "no error", "unterminated string errors")
+    check(parse_err("tru") != "no error", "bad literal errors")
+    check(parse_err("1.2.3") != "no error", "malformed number errors")
+    check(parse_err("[1] junk") != "no error", "trailing junk errors")
+    check(parse_err("\"\\u0041\"") != "no error", "unsupported escape errors clearly")
+    val err_at = parse_err("[1, 2")
+    check(err_at != "no error" && err_at.len() > 0, "error message non-empty")
+
+    // Dogfood the async file path (restored 2026-08-16): Fs.read_file +
+    // DIRECT match on the awaited Throw<str, _> was the await
+    // value-propagation family's casualty (async signatures carried
+    // placeholder types, the tail-? Ok re-wrap never fired, the raw payload
+    // leaked into match). Root-caused and fixed — this stays green.
+    Fs.write_file("dogfood_doc.json", "\"kuzo\"").await()?
+    match Fs.read_file("dogfood_doc.json").await() {
+        Ok(text) => check(parse_ok(text) == JStr("kuzo"), "parse JSON loaded from file (str via await+match)"),
+        Err(e) => check(false, "read dogfood doc ({e.msg})"),
+    }
+    val _ = File.remove("dogfood_doc.json").await()
+    summary()
+}

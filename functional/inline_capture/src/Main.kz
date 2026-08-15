@@ -1,0 +1,75 @@
+// W4c 捕获型 Gate 内联：含早 return / `?` 的纯小函数现在可被内联。
+var failures: i32 = 0
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun clamp(n: i32, lo: i32, hi: i32): i32 {
+    if n < lo {
+        return lo
+    }
+    if n > hi {
+        return hi
+    }
+    n
+}
+
+fun signName(n: i32): str {
+    if n > 0 {
+        return "pos"
+    }
+    if n < 0 {
+        return "neg"
+    }
+    "zero"
+}
+
+// 内联后的调用点位于调用方各处：表达式位置、if 条件、while 条件、嵌套内联
+fun main(): void {
+    check(clamp(5, 1, 10) == 5, "clamp mid")
+    check(clamp(-3, 1, 10) == 1, "clamp lo early-return")
+    check(clamp(99, 1, 10) == 10, "clamp hi early-return")
+    check(signName(7) == "pos", "sign pos early-return")
+    check(signName(-2) == "neg", "sign neg early-return")
+    check(signName(0) == "zero", "sign zero tail-value")
+
+    // 内联函数在条件位置
+    if clamp(20, 1, 10) == 10 {
+        check(true, "inlined in if-cond")
+    } else {
+        check(false, "inlined in if-cond")
+    }
+
+    // 内联函数在循环里（每轮重新求值；capture gate 与循环重置机制交互）
+    var i: i32 = 0
+    var acc: i32 = 0
+    while i < 5 {
+        acc = acc + clamp(i * 3, 2, 8)
+        i = i + 1
+    }
+    check(acc == 2 + 3 + 6 + 8 + 8, "inlined in loop body, acc=" + acc as str)
+
+    // 内联链：mid 调用 clamp（clamp 内联进 mid，mid 无早返回走普通内联）
+    fun mid(n: i32): i32 {
+        clamp(n, 0, 4) * 2
+    }
+    check(mid(3) == 6, "plain-inline of wrapper of captured fn")
+    check(mid(9) == 8, "wrapper hits captured early-return")
+
+    // 早返回后调用方必须继续执行（捕获而非信号泄漏）
+    var after: i32 = clamp(-5, 0, 4)
+    after = after + 100
+    check(after == 100, "caller continues after captured return")
+
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

@@ -1,0 +1,11 @@
+// EXPECT: return type mismatch
+type IntFn = () -> i64
+fun make(): IntFn {
+    fun(): i64 {
+        if true {
+            return "not a number"
+        }
+        0i64
+    }
+}
+fun main(): void { println("ok") }

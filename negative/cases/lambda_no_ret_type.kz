@@ -1,0 +1,5 @@
+// EXPECT: expected ':' followed by return type in lambda
+fun main(): void {
+    val f = fun() { 1 }
+    println("{f()}")
+}

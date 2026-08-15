@@ -1,0 +1,149 @@
+// 功能验证：混合类型/特性交叉（回归：#95 复合赋值严格性、#96 字面量适配写回 ExprInfo、
+// 泛型 null-join；以及 nullable×record/ADT/Throw/嵌套数组/函数类型、语句边界×语句形态、
+// defer×混合类型、泛型容器等组合场景）
+var failures: i32 = 0
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// ── #95：复合赋值与二元运算同严格性（合法路径）──
+fun compoundSameType(): i32 {
+    var x: i32 = 10
+    x += 5
+    x *= 2
+    x -= 10
+    x
+}
+fun compoundU8Literal(): u8 {
+    var x: u8 = 200
+    x += 55
+    x
+}
+fun compoundF64(): f64 {
+    var x: f64 = 1.5
+    x *= 2.0
+    x += 0.5
+    x
+}
+
+// ── #96：字面量适配写回（i64 变量 + 大字面量）──
+fun bigLitAdd(): i64 {
+    val y: i64 = 5
+    y + 500000500000
+}
+fun bigLitCmp(): bool {
+    val x: i64 = 3
+    x < 500000500000 && x == 3
+}
+
+// ── 泛型 null-join ──
+fun pick<T>(a: T, b: T): T { a }
+fun nullJoinFirst(): bool { val x = pick(null, 5); x == null }
+fun nullJoinSecond(): bool { val x = pick(5, null); x == 5 }
+
+// ── nullable × record / ADT / Throw ──
+type P = P(a: i32?, b: str)
+fun recNullField(): i32 {
+    val r = P(null, "x")
+    r.a ?? 42
+}
+type R = | Ok(i32?) | Err(str)
+fun adtNullPayload(): i32 {
+    val r = Ok(null)
+    match r {
+        Ok(v) => v ?? 100
+        Err(m) => 0 - 1
+    }
+}
+type E = E(str)
+fun throwNullOk(): Throw<i32?, E> { Ok(null) }
+fun throwNullCheck(): bool {
+    val r = throwNullOk()
+    match r {
+        Ok(v) => v == null
+        E(m) => false
+    }
+}
+
+// ── nullable × 嵌套数组 ──
+fun nestedNullArr(): bool {
+    val m: i32?[][] = [[null, 1], [2, null]]
+    m[0][0] == null && m[1][1] == null && m[0][1] == 1
+}
+
+// ── nullable × 函数类型 ──
+type NullFn = () -> i32?
+fun lambdaNull(): NullFn { fun(): i32? { null } }
+fun fnTypeNull(): bool {
+    val f = lambdaNull()
+    f() == null
+}
+
+// ── 语句边界 × 语句形态 ──
+fun arrAfterWhile(): i32[] {
+    var i: i32 = 0
+    while i < 2 { i = i + 1 }
+    [i, i + 1]
+}
+var dlog: str = ""
+fun negAfterDefer(): i32 {
+    defer dlog = dlog + "D"
+    0 - 3
+}
+
+// ── defer × 混合类型 ──
+var mix_log: str = ""
+fun deferMix(a: i32?, b: f64): i32 {
+    defer mix_log = mix_log + (a ?? 0) as str + "|" + b as str
+    1
+}
+
+// ── 泛型容器 ──
+type Box<T> = Box(v: T)
+fun boxNull(): bool {
+    val b: Box<i32?> = Box(null)
+    b.v == null
+}
+type Opt2<T> = | N | S(T)
+fun optAdtNull(): bool {
+    val a: Opt2<i32?> = S(null)
+    match a {
+        N => false
+        S(v) => v == null
+    }
+}
+
+// ── TCO × 跨位宽参数 ──
+fun countDown(n: i64, acc: i64): i64 {
+    if n == 0 { acc } else { countDown(n - 1i64, acc + n) }
+}
+
+fun main(): void {
+    check(compoundSameType() == 20, "compound same-type chain")
+    check(compoundU8Literal() == 255, "compound u8 + literal adapt")
+    check(compoundF64() == 3.5, "compound f64")
+    check(bigLitAdd() == 500000500005, "i64 var + big literal")
+    check(bigLitCmp(), "i64 var < big literal")
+    check(nullJoinFirst(), "generic null-join (null first)")
+    check(nullJoinSecond(), "generic null-join (value first)")
+    check(recNullField() == 42, "record nullable field elvis")
+    check(adtNullPayload() == 100, "ADT nullable payload")
+    check(throwNullCheck(), "Throw<i32?,E> Ok(null)")
+    check(nestedNullArr(), "nested nullable array")
+    check(fnTypeNull(), "fn-type returning nullable")
+    val a1 = arrAfterWhile()
+    check(a1[0] == 2 && a1[1] == 3, "array tail after while")
+    check(negAfterDefer() == 0 - 3 && dlog == "D", "neg tail after defer")
+    deferMix(null, 1.5)
+    check(mix_log == "0|1.5", "defer mixed types")
+    check(boxNull(), "generic record nullable field")
+    check(optAdtNull(), "generic ADT nullable payload")
+    check(countDown(1000000i64, 0) == 500000500000, "TCO cross-width")
+    summary()
+}

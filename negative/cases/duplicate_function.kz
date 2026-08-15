@@ -1,0 +1,4 @@
+// EXPECT: duplicate definition of function 'f'
+fun f(x: i32): i32 { x }
+fun f(x: str): str { x }
+fun main(): void { println("x") }

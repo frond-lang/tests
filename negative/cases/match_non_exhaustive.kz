@@ -1,0 +1,8 @@
+// EXPECT: non-exhaustive match
+type C = | Red | Green | Blue
+fun f(c: C): i32 {
+    match c {
+        Red => 1
+    }
+}
+fun main(): void { println("{f(Red)}") }

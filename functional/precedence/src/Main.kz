@@ -1,0 +1,61 @@
+// 功能验证：二元运算符优先级（回归：Bug #87）
+// Bug #87: 移位曾被排在相等/关系比较之下（SHIFT_PREC=7 < EQUALITY=8），
+// `1 << flag == MASK` 被解析为 `1 << (flag == MASK)` 且 bool 静默转 0/1。
+// C 系惯例：移位必须高于比较（`* /` > `+ -` > 移位 > 关系 > 相等 > `&` > `^` > `|`）。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+fun main(): void {
+    // ── 移位 vs 相等（Bug #87 核心）──
+    check(1u32 << 31 == 2147483648u32, "shl == literal")
+    check(!(1u32 << 31 == 2147483647u32), "shl == literal false case")
+    check(16u32 >> 2 == 4u32, "shr == literal")
+    check(1i64 << 40 == 1099511627776i64, "shl i64 == literal")
+
+    // ── 移位 vs 关系 ──
+    check(1u32 << 3 > 4, "shl > rel")
+    check(1u32 << 3 < 16, "shl < rel")
+    check(1u32 << 3 >= 8, "shl >= rel")
+    check(256u32 >> 4 <= 16, "shr <= rel")
+
+    // ── 移位 vs 加减乘（加法类仍高于移位）──
+    check(1u32 << 2 + 3 == 32, "add binds tighter than shl")
+    check(16u32 >> 1 + 1 == 4, "add binds tighter than shr")
+    check(2u32 * 3 << 2 == 24, "mul binds tighter than shl")
+
+    // ── 移位 vs 位运算（移位高于 & | ^；经 val 绑定避免与 == 混写）──
+    val band_shl: u32 = 6u32 & 3 << 1
+    check(band_shl == 6, "shl binds tighter than & (6 & (3<<1))")
+
+    // ── 移位链式（左结合）──
+    check(1u32 << 2 << 3 == 32, "shl left assoc")
+
+    // ── 组合现实模式：== 先于 &（C 风格，文档化行为）──
+    // `flags & MASK == MASK` 解析为 `flags & (MASK == MASK)` = flags & 1；
+    // 判位必须写括号：(flags & MASK) == MASK。
+    val flags: u32 = 0b0110
+    check((flags & 0b0100) == 0b0100, "parenthesized bit test")
+    val unparen: u32 = flags & 0b0100 == 0b0100
+    check(unparen == 0, "unparenthesized bit test is C-style (flags & 1)")
+
+    // ── 关系 vs 相等 ──
+    check(3 > 2 == true, "rel binds tighter than eq")
+
+    // ── 逻辑 ──
+    check(true || false && false, "&& tighter than ||")
+
+    // ── Elvis 最低 ──
+    val a: i32? = null
+    check((a ?? 1) + 2 == 3, "elvis lower than +")
+
+    summary()
+}

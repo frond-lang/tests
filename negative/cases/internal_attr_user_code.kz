@@ -1,0 +1,9 @@
+// EXPECT: reserved for the standard library implementation
+// @internal may only be DECLARED inside the standard library (builtin/** or
+// std/**). In user code it is rejected outright, before any call-site check.
+@internal
+fun helper(): i32 { 1 }
+
+fun main(): void {
+    println(helper())
+}

@@ -1,0 +1,4 @@
+// EXPECT: range start operand must be an integer type
+fun main(): void {
+    for i in 0.0..5.0 { println("{i}") }
+}

@@ -1,0 +1,6 @@
+// EXPECT: cannot operate on 'i32' and 'f64'
+fun main(): void {
+    var x: i32 = 1
+    x += 2.0
+    println("{x}")
+}

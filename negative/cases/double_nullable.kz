@@ -1,0 +1,3 @@
+// EXPECT: double nullable 'T??' is not allowed
+fun f(x: i32??): i32 { x ?? 0 }
+fun main(): void { println("x") }

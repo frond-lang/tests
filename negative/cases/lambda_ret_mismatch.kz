@@ -1,0 +1,5 @@
+// EXPECT: lambda body type incompatible with declared return type
+fun main(): void {
+    val f = fun(): str { 1 }
+    println("{f()}")
+}

@@ -1,0 +1,5 @@
+// EXPECT: cannot use for-in over an iterator whose element type is nullable
+fun main(): void {
+    val arr: i32?[] = [1, null, 3]
+    for e in arr.iter() { println("{e}") }
+}
