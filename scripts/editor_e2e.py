@@ -49,13 +49,13 @@ KEY_EVENT = 1
 STARTF_USESTDHANDLES = 0x100
 SW_HIDE = 0
 
-def create_file(name, inherit):
+def create_file(name, inherit, disposition=OPEN_EXISTING):
     sa = SECURITY_ATTRIBUTES(ctypes.sizeof(SECURITY_ATTRIBUTES), None, inherit)
     h = k32.CreateFileW(name, GENERIC_READ | GENERIC_WRITE, 7,
-                        ctypes.byref(sa), OPEN_EXISTING, 0, None)
-    if h in (0, -1) or h == 0xFFFFFFFFFFFFFFFF:
+                        ctypes.byref(sa), disposition, 0, None)
+    if not h or h == wintypes.HANDLE(-1):
         raise OSError(f"CreateFileW({name}) failed: {k32.GetLastError()}")
-    return wintypes.HANDLE(h)
+    return h
 
 def key(vk, scan, ch, down, ctrl=False):
     r = INPUT_RECORD()
@@ -84,7 +84,8 @@ def main():
     if not k32.CreatePipe(ctypes.byref(r1), ctypes.byref(w1), None, 0):
         raise OSError("CreatePipe failed")
     k32.SetHandleInformation(w1, 1, 1)  # HANDLE_FLAG_INHERIT
-    cmdline = f'"{sys.executable}" -u "{os.path.abspath(__file__)}" --stage2 "{editor}"'
+    cmdline = (f'"{sys.executable}" -u "{os.path.abspath(__file__)}" --stage2 "{editor}"'
+               + (f' "{sys.argv[2]}"' if len(sys.argv) > 2 else ''))
     si = STARTUPINFO()
     si.cb = ctypes.sizeof(STARTUPINFO)
     si.dwFlags = STARTF_USESTDHANDLES
@@ -110,6 +111,7 @@ def main():
     sys.exit(code.value)
 
 def run_in_console(editor):
+    scenario = sys.argv[3] if len(sys.argv) > 3 else "left"
     for _ in range(10):  # console window may not exist the instant we start
         hwnd = k32.GetConsoleWindow()
         if hwnd:
@@ -124,7 +126,11 @@ def run_in_console(editor):
     conin_child = create_file("CONIN$", True)
     conin_mine = create_file("CONIN$", False)
     conout = create_file("CONOUT$", True)
-    errfile = k32.CreateFileW(errpath, GENERIC_WRITE, 3, None, 2, 0, None)  # CREATE_ALWAYS
+    k32.CreateFileW.restype = wintypes.HANDLE
+    k32.CreateFileW.argtypes = (wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
+                                ctypes.POINTER(SECURITY_ATTRIBUTES), wintypes.DWORD,
+                                wintypes.DWORD, wintypes.HANDLE)
+    errfile = create_file(errpath, True, 2)  # CREATE_ALWAYS
 
     si = STARTUPINFO()
     si.cb = ctypes.sizeof(STARTUPINFO)
@@ -143,12 +149,31 @@ def run_in_console(editor):
 
     time.sleep(1.5)  # let the editor enter raw mode + render the first frame
 
-    events = (seq(0x48, 0x23, 'h') +        # h
-              seq(0x49, 0x17, 'i') +        # i
-              seq(0x25, 0x4B, '\x00') +     # VK_LEFT  -> ESC[D via VT input
-              seq(0x58, 0x2D, 'X') +        # X
-              seq(0x53, 0x1F, '\x13', True) +  # Ctrl+S -> save
-              seq(0x51, 0x10, '\x11', True))   # Ctrl+Q -> quit
+    # scenarios: (events, expected untitled.txt content or None)
+    VK_DELETE = 0x2E
+    ctrl_f = seq(0x46, 0x21, '\x06', True)   # Ctrl+F -> search prompt
+    save_quit = seq(0x53, 0x1F, '\x13', True) + seq(0x51, 0x10, '\x11', True)
+    scenarios = {
+        # h,i,VK_LEFT,X -> cursor moved left, X inserted before i
+        "left": (seq(0x48, 0x23, 'h') + seq(0x49, 0x17, 'i') +
+                 seq(0x25, 0x4B, '\x00') + seq(0x58, 0x2D, 'X') + save_quit, b"hXi"),
+        # h,i,VK_LEFT,VK_DELETE -> forward-delete removes the i (ESC[3~ path)
+        "delete": (seq(0x48, 0x23, 'h') + seq(0x49, 0x17, 'i') +
+                   seq(0x25, 0x4B, '\x00') + seq(VK_DELETE, 0x53, '\x00') + save_quit, b"h"),
+    }
+    # esc: standalone ESC must resolve as EscapeKey (no follow-up bytes pending)
+    # and cancel the prompt. A VK_ESCAPE key event is swallowed whole by conhost
+    # under VT input, so the ESC goes in as a raw byte record (vk=0, ch=0x1b) —
+    # exactly what a real terminal (WT/conpty) delivers. Two phases with a gap:
+    # if the reader wrongly waits for more bytes, phase 2 never gets processed.
+    esc_events_1 = ctrl_f + seq(0x41, 0x1E, 'a') + seq(0, 0, '\x1b')
+    esc_events_2 = seq(0x58, 0x2D, 'x') + save_quit
+    if scenario == "left" or scenario == "delete":
+        events, expected = scenarios[scenario]
+        two_phase = None
+    else:
+        events, expected = esc_events_1, b"x"
+        two_phase = esc_events_2
     arr = (INPUT_RECORD * len(events))(*events)
     written = wintypes.DWORD(0)
     k32.WriteConsoleInputW.argtypes = (wintypes.HANDLE, ctypes.POINTER(INPUT_RECORD),
@@ -156,6 +181,12 @@ def run_in_console(editor):
     k32.WriteConsoleInputW.restype = wintypes.BOOL
     if not k32.WriteConsoleInputW(conin_mine, arr, len(events), ctypes.byref(written)):
         raise OSError(f"WriteConsoleInputW failed: {k32.GetLastError()}")
+    if two_phase:
+        time.sleep(0.8)  # give the editor time to resolve the standalone ESC
+        events = two_phase
+        arr = (INPUT_RECORD * len(events))(*events)
+        if not k32.WriteConsoleInputW(conin_mine, arr, len(events), ctypes.byref(written)):
+            raise OSError(f"WriteConsoleInputW(2) failed: {k32.GetLastError()}")
 
     exited = k32.WaitForSingleObject(pi.hProcess, 15000)
     code = wintypes.DWORD(0)
@@ -174,8 +205,9 @@ def run_in_console(editor):
     print(f"exit_code   = {code.value} ({'EXIT' if exited == 0 else 'TIMEOUT'})")
     print(f"untitled    = {content!r}")
     print(f"stderr_tail = {errout[-80:]!r}")
-    good = (exited == 0 and code.value == 0 and content == b"hXi"
+    good = (exited == 0 and code.value == 0 and content == expected
             and "Goodbye." in errout)
+    print(f"expected    = {expected!r}")
     print("RESULT:", "ALL PASSED" if good else "FAILED")
     keep = os.environ.get("KEEP_DIR")
     if not keep:
