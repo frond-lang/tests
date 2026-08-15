@@ -12,42 +12,42 @@
 ### R1：Bug #7 异步路径 control_signal 跳过缺失
 
 - **问题**：异步路径（Schedule.rs）在 compute_propagate 设置 control_signal 后未跳过 notify_downstream，同步路径（Compute.rs:2955-2960）有此检查。循环体内 `?` 传播可能导致 pending 计数错误。
-- **修复**：[Schedule.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/engine/Schedule.rs#L860-L865) 在 `control_signal_nodes` 检查后、`notify_downstream` 前新增 `frame.control_signal` 非空检查，与同步路径保持一致。
+- **修复**：[Schedule.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/engine/Schedule.rs#L860-L865) 在 `control_signal_nodes` 检查后、`notify_downstream` 前新增 `frame.control_signal` 非空检查，与同步路径保持一致。
 
 ### R2：Bug #1 heap_equals discriminant fallback
 
 - **问题**：`heap_equals` 的 `_ => discriminant(a) == discriminant(b)` fallback 对 Partial/TraitVal/LazyVal/AtomicVal/AsyncVal/ChannelVal/SenderVal/ReceiverVal/CoroutineFrame 仅比较变体种类不比较内容，两个不同内容的 Partial/TraitVal 会被判为相等。
-- **修复**：[Arena.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/value/Arena.rs#L1631-L1680) 为每个 HeapObj 变体添加显式内容比较：Partial 比较 func_id/upvalues/bound_args；TraitVal 比较 trait_name/method_names/method_values/data；LazyVal 比较已 force 的缓存结果；AtomicVal 比较内部值；ChannelVal/SenderVal/ReceiverVal 按 Arc 指针身份比较；AsyncVal/CoroutineFrame 返回 false（不同实例永不相等）。消除 `_` fallback，改为显式 `_ => false`（不同变体间永不相等）。
+- **修复**：[Arena.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/value/Arena.rs#L1631-L1680) 为每个 HeapObj 变体添加显式内容比较：Partial 比较 func_id/upvalues/bound_args；TraitVal 比较 trait_name/method_names/method_values/data；LazyVal 比较已 force 的缓存结果；AtomicVal 比较内部值；ChannelVal/SenderVal/ReceiverVal 按 Arc 指针身份比较；AsyncVal/CoroutineFrame 返回 false（不同实例永不相等）。消除 `_` fallback，改为显式 `_ => false`（不同变体间永不相等）。
 
 ### R3：Bug #34 compute_array_store SOA 未同步
 
 - **问题**：`compute_array_store` 越界扩展数组时只更新 `elements` 向量，不更新 `scalar_soa`，导致 SOA 数据与 elements 长度不匹配。
-- **修复**：[Compute.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Compute.rs#L2090-L2101) 新增 SOA 同步逻辑：resize 时失效 SOA（`scalar_soa = None`），in-bounds store 时调用新增的 `ScalarSoA::try_store` 方法（[Value.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/value/Value.rs#L1567-L1588)）尝试就地写入 SOA，类型不匹配则失效 SOA 缓存。`try_store` 按 ValueTag 匹配 + union 字段访问，覆盖全部 12 种标量类型。
+- **修复**：[Compute.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Compute.rs#L2090-L2101) 新增 SOA 同步逻辑：resize 时失效 SOA（`scalar_soa = None`），in-bounds store 时调用新增的 `ScalarSoA::try_store` 方法（[Value.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/value/Value.rs#L1567-L1588)）尝试就地写入 SOA，类型不匹配则失效 SOA 缓存。`try_store` 按 ValueTag 匹配 + union 字段访问，覆盖全部 12 种标量类型。
 
 ### R4：Bug #40/41 逃逸分析遗漏 While/Loop body
 
 - **问题**：`collect_lambda_vars_stmt` 的 `_ => {}` catch-all 遗漏 `Stmt::While` 和 `Stmt::Loop` 的 body，while/loop 体内定义的 lambda 变量不被逃逸分析收集。
-- **修复**：[Builder.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L246-L252) 为 While 和 Loop 添加显式递归扫描分支。
+- **修复**：[Builder.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L246-L252) 为 While 和 Loop 添加显式递归扫描分支。
 
 ### R5：Bug #53 `&` 运算符二元/一元歧义
 
 - **问题**：`parse_binary` 仅对 `TokenKind::Minus` 做阻断处理，遗漏 `TokenKind::Ampersand`（`&` 既是位与也是引用），`{ ... } & x` 会被误解析为位与。
-- **修复**：[Parser.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ast/Parser.rs#L2853-L2857) 将停止条件从 `== TokenKind::Minus` 改为 `matches!(..., TokenKind::Minus | TokenKind::Ampersand)`。
+- **修复**：[Parser.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/ast/Parser.rs#L2853-L2857) 将停止条件从 `== TokenKind::Minus` 改为 `matches!(..., TokenKind::Minus | TokenKind::Ampersand)`。
 
 ### R6：Bug #55 i128/u128 与 f64 混合精度损失
 
 - **问题**：`select_binary_compute_fn` 中 i128/u128 与 f64/f32/f16 混合运算时，`as_float_f64` 将 i128 转 f64 有损（128 位→52 位尾数）。
-- **修复**：[Builder.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L3202-L3224) 新增 i128/u128 检测：当 `has_128_int && float_ty != "f128"` 时提升到 f128，f128 compute_fn 使用 `as_f128()`（通过 `F128::from_i128`/`from_u128` 精确构造，无损）。
+- **修复**：[Builder.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L3202-L3224) 新增 i128/u128 检测：当 `has_128_int && float_ty != "f128"` 时提升到 f128，f128 compute_fn 使用 `as_f128()`（通过 `F128::from_i128`/`from_u128` 精确构造，无损）。
 
 ### R7：Bug #42 f128/f32/f16 match pattern 精度丢失
 
 - **问题**：`compile_pattern_literal` 对所有浮点 pattern 统一产出 `ConstValue::F64`，`1.0f128` 在 match 模式中精度丢失；`compile_pattern_literal_match` 统一用 `CF_EQ_F64` 比较。
-- **修复**：[Builder.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L2972-L3002) 新增 `detect_float_suffix` 函数，按后缀产出正确 ConstValue 变体（f128→F128、f32→F32、f16→F16、f64/无后缀→F64）。[Builder.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L2832-L2849) `compile_pattern_literal_match` 按 后缀选择比较函数：f128/f32/f16 用 `CF_EQ_OBJ`（value_equals_with_arena 精确比较 bit pattern），f64 用 `CF_EQ_F64`。
+- **修复**：[Builder.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L2972-L3002) 新增 `detect_float_suffix` 函数，按后缀产出正确 ConstValue 变体（f128→F128、f32→F32、f16→F16、f64/无后缀→F64）。[Builder.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L2832-L2849) `compile_pattern_literal_match` 按 后缀选择比较函数：f128/f32/f16 用 `CF_EQ_OBJ`（value_equals_with_arena 精确比较 bit pattern），f64 用 `CF_EQ_F64`。
 
 ### R8：Bug #18 has_propagate_stmt 未跳过 defer body
 
 - **问题**：`has_propagate_stmt` 未像 `has_return_stmt` 那样跳过 `Stmt::Defer`，导致 defer body 中的 `?` 运算符被计入函数级 propagate 检测，过保守地阻止内联。
-- **修复**：[Analyzer.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/pass/Analyzer.rs#L2512-L2527) 添加 `Stmt::Defer { .. } => false` 分支，与 `has_return_stmt` 保持一致。
+- **修复**：[Analyzer.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/pass/Analyzer.rs#L2512-L2527) 添加 `Stmt::Defer { .. } => false` 分支，与 `has_return_stmt` 保持一致。
 
 ### R9-R11：保留的语义机制（非特判）
 
@@ -1007,7 +1007,7 @@
 - **影响**：类型别名无法用于闭包变量的声明和赋值，限制了函数类型别名的实用性
 - **根因**：`Inference.rs` 的 `resolve_name_to_type` 在解析类型别名时仅使用 `target_type_name`（字符串名称）进行递归解析。对于非命名目标类型（函数类型 `() -> i32`、Record 类型、Array 类型等），`target_type_name` 为 `None`，导致别名解析失败回退到 `make_adt(name)`，将 `IntFn` 视为独立 ADT 而非函数类型
 - **修复方案**：在 `resolve_name_to_type` 中优先使用 `TypeDefInfo.target_type`（已解析的 `TypeHandle`），覆盖所有非命名目标类型；仅在 `target_type` 为 `None` 时退回 `target_type_name` 路径处理命名目标（如 `type A = B`）
-  - 修改位置：[Inference.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/sema/Inference.rs#L817-L834)
+  - 修改位置：[Inference.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/sema/Inference.rs#L817-L834)
   - 关键逻辑：`alias_target_ty` 优先返回 `td.target_type`，命中后直接返回 `inner_ty`，跳过 `target_type_name` 递归
 - **验证结果**：
   - closures 测试：`IntFn` 类型别名赋值闭包字面量全部通过
@@ -1027,7 +1027,7 @@
 - **影响**：在同一函数中对同一 `val` 数组进行多次 while 循环遍历时，后续循环读取错误值
 - **根因**：while 循环 body 帧在第一个循环完成后未完全重置 effect 链节点和值表状态。第二个循环复用同一数组时，数组索引节点的值表残留上一轮循环的陈旧值，导致 `arr[loopVar]` 读取到错误结果（与 Bug #3/M4 同属"陈旧值读取"类根因，但发生在顺序循环场景）
 - **修复方案**：由先前的循环帧重置改进修复（`Subgraph.rs` 的 `switch_subgraph` 中 `value_table.reset_all()` + effect 链节点 pending_inputs 重置机制）。当 LoopBody 帧在 continue/正常完成时复用，帧的 value_table 被完全重置，effect 链节点重新标记为 PENDING_EXTERNAL，确保第二轮循环重新求值数组索引节点而非读取陈旧缓存
-  - 修改位置：[Subgraph.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/engine/Subgraph.rs#L22-L38)（switch_subgraph 的帧重置逻辑）
+  - 修改位置：[Subgraph.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/engine/Subgraph.rs#L22-L38)（switch_subgraph 的帧重置逻辑）
 - **验证结果**：
   - edge_generics 测试：移除 `warr2` 绕过，多个 while 循环复用同一 `warr` 数组全部通过（`identity in while loop sum`=15、`simple array sum with reused array`=15）
   - 回归测试无新增失败用例
@@ -1039,7 +1039,7 @@
 - **现象**：嵌套模式解构时未为 i32 模式变量注册 ExprInfo 类型信息，`==` 回退到复合类型比较而失败。同路径提取的 str 值 `v == "boom"` 正常
 - **根因**：`Inference.rs` 的 `refine_constructor_pattern` 在处理嵌套构造器模式时，始终将子模式绑定到构造器字段类型（`field_type_reprs[i]`）。当 `Error` ADT 用于解包 `Throw<T, E>` 的 `error_type` 时，构造器返回类型（`Error` ADT）与期望类型（`E`，如 `i32`）不兼容，但子模式仍绑定到 `Error` 的字段类型（`str`），导致模式变量 `v` 获得错误的类型信息，`==` 比较失败
 - **修复方案**：在 `refine_constructor_pattern` 中增加构造器返回类型与期望类型的兼容性检查。当 `unify(ctor_return_ty, expected_ty)` 失败时（类型不兼容），子模式绑定到 `expected_ty` 而非构造器字段类型，确保模式变量获得正确的运行时类型
-  - 修改位置：[Inference.rs](file:///Users/haojunhuang/CLionProjects/Kuzo/src/sema/Inference.rs#L697-L716)
+  - 修改位置：[Inference.rs](file:///Users/haojunhuang/CLionProjects/Frond/src/sema/Inference.rs#L697-L716)
   - 关键逻辑：`ctor_compatible = unify(ctor_return_ty, expected_ty).is_ok()`；不兼容时 `sub_ty = expected_ty`，兼容时 `sub_ty = field_type_reprs[i]`
 - **验证结果**：
   - edge_throw 测试：`throwI32(true)`（Throw<i32, i32>）的 `Error(Error(v)) => check(v == 42i32, ...)` 直接比较通过（Bug #29 修复生效）；`Error(Error(v)) => check(v == "boom", ...)` 同样通过
@@ -1528,10 +1528,10 @@
 - **根因**：`compile_match` 在第一阶段按顺序编译所有 arm 的 pattern + body（`compile_branch_subgraph`），但 `compile_branch_subgraph` 不隔离 `current_effect`。当某个 arm body 包含非尾递归自调用时，`non_tail_rec_to_loop` 拦截会设置 `current_effect` 为 Continue barrier 节点（`compile_call` 第 4632-4750 行）。此后构建 Gate 时（第二阶段从后往前），所有 arm 的 Gate 输入都使用被污染的全局 `current_effect`，导致前序 arm 的 Gate 依赖了后序 arm body 产生的 Continue barrier。运行时，即使前序 arm 的 pattern 匹配成功，其 Gate 因依赖另一个 arm 的 barrier 而无法执行，整个 match 返回 void。
 - **触发条件**：match 表达式中某个 arm body 包含非尾位置自调用（触发 `non_tail_rec_to_loop` 拦截），且该 arm 不是最后一个编译的 arm。典型场景：`match l { Nil => 0; Cons(_, t) => 1 + listLen(t) }`——Cons arm 的 `listLen(t)` 被拦截产生 Continue barrier，污染 Nil arm 的 Gate。
 - **修复**：在 `compile_match` 的 `ArmData` 结构中新增 `effect_before: Option<NodeId>` 字段，在每个 arm 编译前保存 `current_effect`。Gate 构建阶段使用 arm 级别的 `effect_before` 而非全局 `current_effect`，确保每个 arm 的 Gate 仅依赖该 arm 编译前已完成的副作用，不受后续 arm body 副作用的影响。
-  - [Builder.rs:3198-3202](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L3198-L3202)：ArmData 新增 `effect_before` 字段
-  - [Builder.rs:3210-3212](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L3210-L3212)：arm 编译前保存 `effect_before`
-  - [Builder.rs:3246-3252](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L3246-L3252)：ArmData 初始化 `effect_before`
-  - [Builder.rs:3273-3281](file:///Users/haojunhuang/CLionProjects/Kuzo/src/ir/Builder.rs#L3273-L3281)：Gate 输入使用 `ad.effect_before` 替代 `self.current_effect`
+  - [Builder.rs:3198-3202](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L3198-L3202)：ArmData 新增 `effect_before` 字段
+  - [Builder.rs:3210-3212](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L3210-L3212)：arm 编译前保存 `effect_before`
+  - [Builder.rs:3246-3252](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L3246-L3252)：ArmData 初始化 `effect_before`
+  - [Builder.rs:3273-3281](file:///Users/haojunhuang/CLionProjects/Frond/src/ir/Builder.rs#L3273-L3281)：Gate 输入使用 `ad.effect_before` 替代 `self.current_effect`
 - **验证**：8/9 受影响测试通过（adt、edge_adt、edge_generics、edge_match、edge_recursion、edge_stress、edge_traits、patterns 全部 ALL PASSED）；edge_defer 剩 1 个失败为独立 bug（non_tail_rec_to_loop 工作栈模拟不支持 defer LIFO unwind，与本 bug 无关），见 Bug #57。34 功能测试无回归，Rust 单元测试通过。
 
 ---
@@ -1545,7 +1545,7 @@
 - **根因**：`non_tail_rec_to_loop` 将递归调用转为 while 循环（工作栈模拟），每次"递归调用"是循环的一轮迭代。但 defer 注册到函数主子图的 `defer_table`（`compile_stmt` Defer 分支通过 `current_function_sg` 注册），运行时仅在函数帧终止时执行一次（`Schedule.rs:928-933`）。工作栈模拟不创建/销毁递归帧，defer 无法在每轮迭代完成时触发。此外，defer body 引用的参数 `n` 在循环中已失效（`param_cur` 每轮覆盖），导致 `cast(n).to(str)` 读到 null。
 - **触发条件**：纯函数（purity 分析未检测到全局赋值副作用）+ 非尾递归 + 函数体含 defer 语句。典型场景：`fun deferRecur(n: i32): i32 { defer recur_log = recur_log + cast(n).to(str); if n <= 0 { 0 } else { n + deferRecur(n - 1) } }`。
 - **修复**：在 `memo_pass` 的非尾递归检测分支中，使用已有的 `has_defer` 函数检查函数体是否包含 defer。若含 defer，跳过 `NonTailRecToLoop` 转换，降级为 `Memoize` 策略（保持真递归调用，defer 在每次帧终止时正确执行）。
-  - [Analyzer.rs:2850-2863](file:///Users/haojunhuang/CLionProjects/Kuzo/src/pass/Analyzer.rs#L2850-L2863)：新增 `has_defer` 检查，含 defer 的函数降级为 Memoize
+  - [Analyzer.rs:2850-2863](file:///Users/haojunhuang/CLionProjects/Frond/src/pass/Analyzer.rs#L2850-L2863)：新增 `has_defer` 检查，含 defer 的函数降级为 Memoize
 - **验证**：edge_defer ALL PASSED（deferRecur 的 `recur_log == "0123"` 正确）。34 功能测试无回归，Rust 单元测试通过。
 
 ---

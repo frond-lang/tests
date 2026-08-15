@@ -1,3 +1,0 @@
-[package]
-name = "inline_capture"
-entry = "src/Main.kz"

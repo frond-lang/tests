@@ -6,7 +6,7 @@ cd "$(dirname "$0")"
 
 FROND="${FROND:-}"
 if [ -z "$FROND" ]; then
-    FROND="$(cd "$(dirname "$0")/../../Kuzo/target/release" && pwd)/frond.exe"
+    FROND="$(cd "$(dirname "$0")/../../Frond/target/release" && pwd)/frond.exe"
 fi
 if [ ! -f "$FROND" ]; then
     echo "frond binary not found at $FROND (build first or set FROND env var)" >&2
