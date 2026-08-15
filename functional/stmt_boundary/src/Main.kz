@@ -99,7 +99,7 @@ fun indexWorks(): i32 {
 
 // ── 9. 方法链同行正常 ──
 fun chainWorks(): i32 {
-    val s: str = "kuzo"
+    val s: str = "frond"
     s.bytes().len()
 }
 
@@ -123,7 +123,7 @@ fun main(): void {
     check(sameLineCall() == 5, "same-line call")
     check(multilineArgs() == 30, "call paren same line, args multiline")
     check(indexWorks() == 20, "same-line index")
-    check(chainWorks() == 4, "same-line method chain")
+    check(chainWorks() == 5, "same-line method chain")
 
     summary()
 }

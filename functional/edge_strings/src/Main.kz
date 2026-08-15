@@ -57,7 +57,7 @@ fun main(): void {
 
     // ─── 2. 组合字符（combining marks）限制记录 ───
     println("--- Combining Marks (Limitation) ---")
-    // 限制：Kuzo 不支持 \uXXXX 转义序列，无法在源码中构造组合字符序列。
+    // 限制：Frond 不支持 \uXXXX 转义序列，无法在源码中构造组合字符序列。
     // 试 `val s = "e\u0301"` 会导致 parse error: expected expression。
     // 预组合形式（如 é = U+00E9）可直接输入，len == 1。
     val precomposed: str = "é"

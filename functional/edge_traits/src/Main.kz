@@ -205,7 +205,7 @@ fun main(): void {
 
     // ─── 5. trait 对象数组（探测：trait 方法在数组元素上分派）───
     println("--- Trait Method on Array Elements ---")
-    // 注：Kuzo 可能不支持 trait 对象数组（元素类型不同）
+    // 注：Frond 可能不支持 trait 对象数组（元素类型不同）
     // 探测：用 record 数组存储实现同一 trait 的不同 record 类型
     // 探测 1：同类型数组（正常）
     val circle_arr: CircleS[] = [CircleS(1.0f64), CircleS(2.0f64), CircleS(3.0f64)]
@@ -302,7 +302,7 @@ fun main(): void {
     // 探测：trait 方法内部是否能直接递归调用 this.method()
     // 这里通过 ListOps.sum 调用 listSum（顶层函数），而非直接 this.sum
     // 尝试直接在 trait 方法中递归（通过 match 模式）
-    // 注：Kuzo 不允许 trait 方法体中直接写 match this 递归（this 类型不明确）
+    // 注：Frond 不允许 trait 方法体中直接写 match this 递归（this 类型不明确）
     // 所以用顶层函数包装。此处验证包装路径正常
     val big_list = Cons(100i32, Cons(200i32, Cons(300i32, Nil)))
     val lw_big = IntListWrap(big_list)

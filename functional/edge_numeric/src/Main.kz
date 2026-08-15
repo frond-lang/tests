@@ -104,7 +104,7 @@ fun main(): void {
     check(u32_max == 4294967295u32, "u32 max")
 
     // ─── 4 & 11. 整数回绕溢出（同时验证类型宽度）───
-    // Kuzo 对 + - * / % 全部使用 wrapping 语义（Bug #22 已修复）
+    // Frond 对 + - * / % 全部使用 wrapping 语义（Bug #22 已修复）
     println("--- Wrapping Overflow (= Type Width) ---")
 
     // i8: 8 位
@@ -298,7 +298,7 @@ fun main(): void {
     check(!(nn <= 0.0f64), "NaN <= 0.0 is false")
     check(!(nn >= 0.0f64), "NaN >= 0.0 is false")
     check(!(nn == nn), "NaN == NaN is false")
-    // 注意：Kuzo 的 != 对 NaN 语义需验证；这里断言 unordered 行为
+    // 注意：Frond 的 != 对 NaN 语义需验证；这里断言 unordered 行为
     check(!(nn < nn), "NaN < NaN is false")
 
     // ─── 16. Inf 完整算术矩阵 ───

@@ -1,7 +1,7 @@
 // 功能验证：std.os（环境变量 / tty 检测 / 进程信息 / 工作目录 / 系统信息）
 // 同时覆盖 io 域的 File.stat_of（metadata 已有 API，此处作回归锚点）
 //
-// 写法上刻意使用 Kuzo 的语言特性：
+// 写法上刻意使用 Frond 的语言特性：
 //   - Throw 是一等值：check_result 直接接收 Throw 值统一断言
 //   - `?` 传播解包、match 穷尽、defer 清理、字符串插值、ADT 模式
 import std.os.Env
@@ -43,16 +43,16 @@ fun summary(): void {
 
 fun env_roundtrip(): void {
     println("-- Env --")
-    check(Env.get("KUZO_OS_TEST_MISSING_XYZ") == "", "get missing -> empty")
+    check(Env.get("FROND_OS_TEST_MISSING_XYZ") == "", "get missing -> empty")
 
-    check_ok(Env.set("KUZO_OS_TEST_VAR", "hello-os"), "set")
-    check(Env.get("KUZO_OS_TEST_VAR") == "hello-os", "set then get")
+    check_ok(Env.set("FROND_OS_TEST_VAR", "hello-os"), "set")
+    check(Env.get("FROND_OS_TEST_VAR") == "hello-os", "set then get")
 
-    check_ok(Env.set("KUZO_OS_TEST_VAR", "second"), "overwrite")
-    check(Env.get("KUZO_OS_TEST_VAR") == "second", "overwrite visible")
+    check_ok(Env.set("FROND_OS_TEST_VAR", "second"), "overwrite")
+    check(Env.get("FROND_OS_TEST_VAR") == "second", "overwrite visible")
 
-    check_ok(Env.remove("KUZO_OS_TEST_VAR"), "remove")
-    check(Env.get("KUZO_OS_TEST_VAR") == "", "remove then get -> empty")
+    check_ok(Env.remove("FROND_OS_TEST_VAR"), "remove")
+    check(Env.get("FROND_OS_TEST_VAR") == "", "remove then get -> empty")
 }
 
 fun tty_checks(): void {
@@ -76,7 +76,7 @@ fun proc_checks(): void {
     val pid = Proc.getpid()
     check(pid > 0, "getpid > 0 (got {pid})")
 
-    match Proc.system("echo kuzo-sys > os_sys_test.txt") {
+    match Proc.system("echo frond-sys > os_sys_test.txt") {
         Ok(rc) => check(rc == 0, "system exit code 0 (got {rc})"),
         Err(e) => check(false, "system ({e.msg})"),
     }
@@ -112,7 +112,7 @@ fun cwd_checks(): void {
     check(home.len() > 0, "current_dir non-empty")
 
     // 建临时目录 -> chdir 进去 -> 验证 -> 显式清理（同步函数 defer 内 await 仍会挂起，故不用 defer）
-    val sub = "kuzo_os_test_tmp"
+    val sub = "frond_os_test_tmp"
     val _ = Dir.create(sub, false).await()
     var inside = ""
     match Os.set_current_dir(sub) {

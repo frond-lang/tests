@@ -1,5 +1,5 @@
 // 负向用例：Throw of 数组元素类型不匹配
-// 期望（kuzo debug --stage check，exit 1）：
+// 期望（frond debug --stage check，exit 1）：
 //   type annotation mismatch: expected 'Throw<i64[], Error>', found 'Throw<i32[2], Error>'
 //
 // 说明：注解 Throw<i64[], Error> 与值 Ok([1i32,2i32])（推断为 Throw<i32[2], Error>）

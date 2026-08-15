@@ -1,0 +1,7 @@
+[package]
+name = "troll_battery"
+entry = "probes/p39_defer_lifo.kz"
+
+[build]
+output_dir = "out"
+opt_level = 2

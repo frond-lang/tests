@@ -1,6 +1,6 @@
-// Dogfood 测试：用 Kuzo 写的真实程序 —— JSON 解析器（词法 + 递归下降 + 转义 + 错误处理）
+// Dogfood 测试：用 Frond 写的真实程序 —— JSON 解析器（词法 + 递归下降 + 转义 + 错误处理）
 // 这不是微测试：几百行、递归数据类型、可变解析器状态、Throw 错误传播、字符级处理。
-// 持续验证 Kuzo 能写真实程序；任何引擎回归都会在这里暴露。
+// 持续验证 Frond 能写真实程序；任何引擎回归都会在这里暴露。
 //
 // 支持子集：null / true / false / number（含负数/小数/指数）/ string（引号、反斜杠、
 // 斜杠、n t r 转义、UTF-8 直通）/ array / object（解析为 Entry 数组，按序保留键）。
@@ -420,8 +420,8 @@ fun main(): void {
     check(nested_ok, "nested arrays")
     val empty_obj = parse_ok("\{\}")
     check(empty_obj == JObj([]), "empty object")
-    val doc = parse_ok("\{\"name\": \"kuzo\", \"version\": 2, \"stable\": true, \"meta\": \{\"stars\": 128\}\}")
-    check(j_str(j_get(doc, "name")) == "kuzo", "object string field")
+    val doc = parse_ok("\{\"name\": \"frond\", \"version\": 2, \"stable\": true, \"meta\": \{\"stars\": 128\}\}")
+    check(j_str(j_get(doc, "name")) == "frond", "object string field")
     check(j_num(j_get(doc, "version")) == 2.0, "object number field")
     check(j_get(doc, "stable") == JBool(true), "object bool field")
     val meta = j_get(doc, "meta")
@@ -463,9 +463,9 @@ fun main(): void {
     // value-propagation family's casualty (async signatures carried
     // placeholder types, the tail-? Ok re-wrap never fired, the raw payload
     // leaked into match). Root-caused and fixed — this stays green.
-    Fs.write_file("dogfood_doc.json", "\"kuzo\"").await()?
+    Fs.write_file("dogfood_doc.json", "\"frond\"").await()?
     match Fs.read_file("dogfood_doc.json").await() {
-        Ok(text) => check(parse_ok(text) == JStr("kuzo"), "parse JSON loaded from file (str via await+match)"),
+        Ok(text) => check(parse_ok(text) == JStr("frond"), "parse JSON loaded from file (str via await+match)"),
         Err(e) => check(false, "read dogfood doc ({e.msg})"),
     }
     val _ = File.remove("dogfood_doc.json").await()

@@ -117,7 +117,7 @@ fun main(): void {
 
     check(OwnM.m() == "own", "explicit override satisfies both traits")
 
-    check(Loud("kuzo").greet() == "hello kuzo", "record type super call")
+    check(Loud("frond").greet() == "hello frond", "record type super call")
 
     summary()
 }

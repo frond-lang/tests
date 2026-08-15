@@ -1,5 +1,5 @@
 // 负向用例：nullable 数组元素类型不匹配
-// 期望（kuzo debug --stage check，exit 1）：
+// 期望（frond debug --stage check，exit 1）：
 //   type annotation mismatch: expected 'i64[]?', found 'i32[2]'
 //
 // 说明：注解 i64[]?（nullable 数组）与值 [1i32,2i32]（推断为 i32[2]）

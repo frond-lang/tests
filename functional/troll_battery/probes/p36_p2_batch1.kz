@@ -26,7 +26,7 @@ fun first<T>(arr: T[]): T { arr[0] }
 pub fun main(): void {
     println("=== P2 Batch 1 ===")
 
-    // ── turbofish 语法 (Kuzo 使用 f<T>(args) 而非 f::<T>(args)) ──
+    // ── turbofish 语法 (Frond 使用 f<T>(args) 而非 f::<T>(args)) ──
     println("--- Turbofish ---")
     val v1 = identity<i32>(42i32)
     check(v1 == 42, "turbofish: identity<i32>(42)")
@@ -40,7 +40,7 @@ pub fun main(): void {
 
     // ── range 表达式 ──
     println("--- Range Expression ---")
-    // 基础 range (Kuzo range 要求 i64)
+    // 基础 range (Frond range 要求 i64)
     var sum1: i64 = 0
     for i in 1i64..5i64 {
         sum1 = sum1 + i
@@ -131,7 +131,7 @@ pub fun main(): void {
     }
     check(cname == "red", "local type: Color match")
 
-    // 局部 record (Kuzo 使用单构造器 ADT 语法)
+    // 局部 record (Frond 使用单构造器 ADT 语法)
     type Pt = Pt(x: i32, y: i32)
     val p = Pt(3, 4)
     check(p.x == 3 && p.y == 4, "local type: Pt record")

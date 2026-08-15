@@ -1,5 +1,5 @@
 // 负向用例：嵌套 Throw 内部类型不匹配
-// 期望（kuzo debug --stage check，exit 1）：
+// 期望（frond debug --stage check，exit 1）：
 //   type annotation mismatch: expected 'Throw<Throw<i32, Error>, Error>', found 'Throw<Throw<str, Error>, Error>'
 //
 // 说明：注解 Throw<Throw<i32, Error>, Error> 与值 Ok(Ok("str"))（推断为 Throw<Throw<str, Error>, Error>）

@@ -1,5 +1,5 @@
 // 负向用例：数组维度不匹配
-// 期望（kuzo debug --stage check，exit 1）：
+// 期望（frond debug --stage check，exit 1）：
 //   type annotation mismatch: expected 'i32[][]', found 'i32[3]'
 //
 // 说明：注解 i32[][]（二维）与值 [1i32,2i32,3i32]（一维 i32[3]）维度不匹配；

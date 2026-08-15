@@ -106,7 +106,7 @@ fun main(): void {
 
     // ─── 6. 比较链语义 ───
     println("--- Comparison Chains ---")
-    // Kuzo 不支持链式比较（a < b < c），需用 &&
+    // Frond 不支持链式比较（a < b < c），需用 &&
     val a: i32 = 5
     val b: i32 = 10
     val c: i32 = 15
@@ -174,7 +174,7 @@ fun main(): void {
     println("--- Mixed-Type Arithmetic ---")
     val i: i32 = 10
     val l: i64 = 20i64
-    // i32 + i64 需要显式 cast（Kuzo 严格类型）
+    // i32 + i64 需要显式 cast（Frond 严格类型）
     check(i as i64 + l == 30i64, "i32 cast to i64 + i64")
     val f: f64 = 1.5f64
     check(i as f64 + f == 11.5f64, "i32 cast to f64 + f64")

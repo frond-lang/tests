@@ -4,7 +4,7 @@
 //   - builtin array .len() (not a reflect method — already builtin)
 //
 // Every value gets reflect methods via structural auto-impl (no explicit trait declaration).
-// Note: in Kuzo, `type Point = Point(x: i32, y: i32)` is a single-constructor ADT
+// Note: in Frond, `type Point = Point(x: i32, y: i32)` is a single-constructor ADT
 // (kind == "Adt"), not a record literal.
 
 var failures: i32 = 0

@@ -1,5 +1,5 @@
 // 负向用例：类型别名在 mismatch 报错中保留别名名（Bug #61 已修复）
-// 期望（kuzo debug --stage check，exit 1）：
+// 期望（frond debug --stage check，exit 1）：
 //   type annotation mismatch: expected 'Mat2D', found 'i64[2][1]'
 //   type annotation mismatch: expected 'I64Arr', found 'i32[2]'
 type Mat2D = i32[][]

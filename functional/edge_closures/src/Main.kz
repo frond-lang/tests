@@ -188,7 +188,7 @@ fun main(): void {
     }
     val inner = mk_add()
     check(inner() == 15, "2-layer nested closure factory (5+10)")
-    // 注：3 层嵌套闭包（闭包返回闭包返回闭包）会 panic，见 edge_probe/src/Main.kuzo
+    // 注：3 层嵌套闭包（闭包返回闭包返回闭包）会 panic，见 edge_probe/src/Main.frond
 
     // ─── 8. 闭包相等性（探测）───
     println("--- Closure Equality Probe ---")

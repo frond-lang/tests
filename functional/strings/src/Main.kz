@@ -38,8 +38,8 @@ fun main(): void {
     check("abc" + "" == "abc", "concat with empty right")
 
     // 字符串插值
-    val name = "Kuzo"
-    check("Hello, {name}!" == "Hello, Kuzo!", "interpolation str")
+    val name = "Frond"
+    check("Hello, {name}!" == "Hello, Frond!", "interpolation str")
     val n = 42
     check("n = {n}" == "n = 42", "interpolation int")
 

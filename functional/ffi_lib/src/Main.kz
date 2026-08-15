@@ -1,0 +1,117 @@
+// ffi_lib functional test — verifies the builtin Lib / ForeignFn interop API:
+//   - Lib.open(path): load an external dynamic library
+//   - Lib.embed(path): build-time-captured resource, extracted + loaded at runtime
+//   - lib.has_symbol(name) / lib.close()
+//   - lib.lookup(name, args_sig): ForeignFn[R] — R solved via `?` + type annotation
+//   - f.call(args...): marshaled native call incl. u8[] writeback (out params)
+//
+// Canonical binding form (the method-call path does not propagate expected
+// types, so R must be pinned by the annotation at the `?` unwrap):
+//   val f: ForeignFn<u64> = lib.lookup("GetStdHandle", "i32")?
+//
+// Platform: happy paths use kernel32.dll (Windows). Failure paths are
+// platform-neutral. A MISSING embed asset is a compile-time error, not a
+// runtime Throw.
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun happy_path(): Throw<void, FfiError> {
+    // ── open ──
+    val k32 = Lib.open("kernel32.dll")?
+    check(true, "open(kernel32) succeeds")
+
+    // ── has_symbol ──
+    check(k32.has_symbol("GetStdHandle"), "has_symbol(GetStdHandle) = true")
+    check(!k32.has_symbol("ZzNotARealSymbol9"), "has_symbol(bogus) = false")
+
+    // ── lookup + call: scalar return ──
+    val get_std_handle: ForeignFn<u64> = k32.lookup("GetStdHandle", "i32")?
+    val h = get_std_handle.call(-11i32)?
+    check(h != 0u64, "GetStdHandle(-11) != 0")
+
+    // ── u8[] writeback (out params) ──
+    // GetSystemInfo(LPSYSTEM_INFO): void return, writes ~44 bytes into the
+    // buffer (works headless — unlike GetConsoleMode, which fails on pipes).
+    val get_sysinfo: ForeignFn<void> = k32.lookup("GetSystemInfo", "u8[]")?
+    val info_buf: u8[] = [0u8, ..48]
+    get_sysinfo.call(info_buf)?
+    // SYSTEM_INFO.dwPageSize sits at byte offset 4 (typically 4096).
+    val page_size = (info_buf[4] as u32) + ((info_buf[5] as u32) << 8)
+        + ((info_buf[6] as u32) << 16) + ((info_buf[7] as u32) << 24)
+    check(page_size != 0u32, "GetSystemInfo wrote dwPageSize into u8[] buffer")
+    check(page_size == 4096u32, "GetSystemInfo dwPageSize == 4096")
+
+    // ── void return ──
+    val sleep_fn: ForeignFn<void> = k32.lookup("Sleep", "u32")?
+    sleep_fn.call(1u32)?
+    check(true, "Sleep(1) void call succeeds")
+
+    // ── lookup failure paths ──
+    match k32.lookup("ZzNoSuchFn9", "i32") {
+        Ok(_) => check(false, "lookup(bogus symbol) should fail")
+        Error(_) => check(true, "lookup(bogus symbol) throws")
+    }
+    match k32.lookup("GetStdHandle", "wat") {
+        Ok(_) => check(false, "lookup(bad sig atom) should fail")
+        Error(_) => check(true, "lookup(bad sig atom) throws")
+    }
+
+    // ── close semantics ──
+    k32.close()
+    k32.close()
+    check(true, "close() is idempotent")
+    check(!k32.has_symbol("GetStdHandle"), "has_symbol after close = false")
+    match get_std_handle.call(-11i32) {
+        Ok(_) => check(false, "call after close should fail")
+        Error(_) => check(true, "call after close throws")
+    }
+    Ok(void)
+}
+
+fun embed_path(): Throw<void, FfiError> {
+    val lib = Lib.embed("assets/msimg32.dll")?
+    check(true, "embed(msimg32.dll) extracts + loads")
+    check(lib.has_symbol("AlphaBlend"), "embedded lib has AlphaBlend")
+    lib.close()
+    Ok(void)
+}
+
+fun main(): void {
+    println("--- 1. Lib.open failure path ---")
+    match Lib.open("no_such_library_zz9.dll") {
+        Ok(_) => check(false, "open(missing) should fail")
+        Error(_) => check(true, "open(missing) throws FfiError")
+    }
+
+    println("--- 2. kernel32 happy path ---")
+    match happy_path() {
+        Ok(_) => {}
+        Error(e) => check(false, "happy path should not fail: {e}")
+    }
+
+    println("--- 3. Lib.embed ---")
+    match embed_path() {
+        Ok(_) => {}
+        Error(e) => check(false, "embed path should not fail: {e}")
+    }
+
+    summary()
+}
