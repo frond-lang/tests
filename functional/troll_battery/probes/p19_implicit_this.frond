@@ -1,0 +1,185 @@
+// p19_implicit_this.frond — 隐式 this 接收者 + This 类型关键字专项测试
+// 验证：
+//   1. 方法签名无需声明接收者（Parser 自动注入 this 参数）
+//   2. 方法体内裸标识符访问实例字段（读/写）
+//   3. 方法体内裸标识符调用实例方法
+//   4. 显式 this.field / this.method() 消歧
+//   5. This 作为返回类型关键字（fun clone(): This）
+//   6. & 接收者（可变）与默认接收者（按值）的语义
+//   7. 局部变量遮蔽实例字段（优先级：局部 > 字段）
+//   8. 迭代器模式（隐式 this 字段读+写在 if 条件/数组索引/赋值中）
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// ── 1. 基础：隐式 this 字段读 ──
+type Counter = Counter(count: i32, label: str) {
+    // 默认接收者（按值）：读取字段
+    fun get_count(): i32 {
+        count
+    }
+    fun get_label(): str {
+        label
+    }
+    // 显式 this.field（消歧/可读性）
+    fun get_count_explicit(): i32 {
+        this.count
+    }
+}
+
+// ── 2. 隐式 this 字段写（& 接收者） ──
+type Accumulator = Accumulator(total: i32) {
+    // & 接收者：可变更新
+    pub fun &add(x: i32): void {
+        total = total + x
+    }
+    fun get(): i32 {
+        total
+    }
+    // This 作为返回类型
+    pub fun &reset(): This {
+        total = 0
+        this
+    }
+}
+
+// ── 3. 隐式 this 方法调用 ──
+type Chain = Chain(value: i32) {
+    fun get(): i32 {
+        value
+    }
+    pub fun &inc(): void {
+        value = value + 1
+    }
+    // 隐式调用其他方法
+    fun double_get(): i32 {
+        get() + get()
+    }
+    pub fun &inc_and_get(): i32 {
+        inc()
+        get()
+    }
+}
+
+// ── 4. 局部变量遮蔽实例字段 ──
+type Shadow = Shadow(x: i32) {
+    fun shadow_test(): i32 {
+        val x = 999  // 局部变量遮蔽实例字段 x
+        x  // 应返回 999（局部优先）
+    }
+    fun field_test(): i32 {
+        x  // 应返回实例字段值
+    }
+}
+
+// ── 5. 迭代器模式（关键回归：隐式 this 在 if 条件/数组索引/赋值中） ──
+type MyIter = MyIter(data: i32[], pos: usize) {
+    pub fun &next(): i32? {
+        // 隐式 pos 读（if 条件） + 隐式 data.len() 方法调用
+        if pos >= data.len() {
+            return null
+        }
+        // 隐式 pos 读（数组索引） + 隐式 data 读（recv）
+        val v = data[pos]
+        // 隐式 pos 读 + 隐式 pos 写
+        pos = pos + 1
+        return v
+    }
+}
+
+// ── 6. This 作为返回类型 + 链式调用 ──
+type Builder = Builder(buf: str) {
+    pub fun &add_part(p: str): This {
+        buf = buf + p
+        this
+    }
+    fun build(): str {
+        buf
+    }
+}
+
+pub fun main(): void {
+    println("=== Implicit this + This type ===")
+
+    // ── 测试 1：隐式字段读 ──
+    println("--- Implicit field read ---")
+    val c = Counter(42, "hello")
+    check(c.get_count() == 42, "implicit field read: count")
+    check(c.get_label() == "hello", "implicit field read: label")
+    check(c.get_count_explicit() == 42, "explicit this.count")
+
+    // ── 测试 2：隐式字段写（& 接收者） ──
+    println("--- Implicit field write (& receiver) ---")
+    val acc = Accumulator(10)
+    acc.add(5)
+    check(acc.get() == 15, "implicit field write: total = total + 5")
+    acc.add(100)
+    check(acc.get() == 115, "implicit field write: total = total + 100")
+
+    // ── 测试 3：This 返回类型 ──
+    println("--- This as return type ---")
+    val reset_acc = acc.reset()
+    check(reset_acc.get() == 0, "This return type + implicit field write")
+    check(acc.get() == 0, "reset mutated receiver in place")
+
+    // ── 测试 4：隐式方法调用 ──
+    println("--- Implicit method call ---")
+    val ch = Chain(7)
+    check(ch.double_get() == 14, "implicit method call: get() + get()")
+    ch.inc_and_get()
+    check(ch.get() == 8, "implicit method call: inc() then get()")
+
+    // ── 测试 5：局部变量遮蔽 ──
+    println("--- Local shadows field ---")
+    val sh = Shadow(10)
+    check(sh.shadow_test() == 999, "local var shadows instance field")
+    check(sh.field_test() == 10, "instance field access without shadow")
+
+    // ── 测试 6：迭代器（关键回归） ──
+    println("--- Iterator pattern (regression) ---")
+    val arr = [10, 20, 30]
+    val it = MyIter(arr, 0)
+    val v1 = it.next()
+    val v2 = it.next()
+    val v3 = it.next()
+    val v4 = it.next()
+    check(v1 == 10, "iter next() #1")
+    check(v2 == 20, "iter next() #2")
+    check(v3 == 30, "iter next() #3")
+    check(v4 == null, "iter next() #4 (exhausted)")
+
+    // ── 测试 7：This 链式调用 ──
+    println("--- This chain ---")
+    val b0 = Builder("")
+    b0.add_part("Hello")
+    check(b0.build() == "Hello", "This chain: single add_part")
+    val b = Builder("")
+    val built = b.add_part("Hello").add_part(" ").add_part("World")
+    check(built.build() == "Hello World", "This chain: add_part().add_part().build()")
+
+    // ── 测试 8：for 循环使用自定义迭代器 ──
+    println("--- for loop with custom iterator ---")
+    var sum = 0
+    for x in MyIter([1, 2, 3, 4, 5], 0) {
+        sum = sum + x
+    }
+    check(sum == 15, "for loop with implicit-this iterator")
+
+    summary()
+}

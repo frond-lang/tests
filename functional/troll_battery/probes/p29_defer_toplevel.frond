@@ -1,0 +1,35 @@
+// p29_defer_toplevel.frond — defer 字段赋值测试（顶层类型）
+type Box = Box(v: i32) {
+    pub fun &defer_field(x: i32): void {
+        defer this.v = x
+        this.v = 0
+    }
+    pub fun &defer_implicit(x: i32): void {
+        defer v = x
+        v = 0
+    }
+    fun get(): i32 { v }
+}
+
+var g_s: str = ""
+
+pub fun main(): void {
+    println("=== Defer with Top-level Type ===")
+
+    val b1 = Box(0)
+    b1.defer_field(77)
+    println("defer this.v = 77: b1.get={b1.get()} (expect 77)")
+
+    val b2 = Box(0)
+    b2.defer_implicit(88)
+    println("defer v = 88: b2.get={b2.get()} (expect 88)")
+
+    // defer with captured local (still failing?)
+    var local_s: str = ""
+    fun tB(): void {
+        defer local_s = local_s + "A"
+        local_s = local_s + "body"
+    }
+    tB()
+    println("defer local_s = local_s + A: local_s='{local_s}' (expect 'bodyA')")
+}

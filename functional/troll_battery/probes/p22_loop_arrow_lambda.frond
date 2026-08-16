@@ -1,0 +1,107 @@
+// p22_loop_arrow_lambda.frond — loop 语句 + arrow lambda 专项测试
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// 用于测试 arrow lambda 作为参数
+fun apply(f: (i32) -> i32, x: i32): i32 { f(x) }
+fun apply2(f: (i32, i32) -> i32, a: i32, b: i32): i32 { f(a, b) }
+
+pub fun main(): void {
+    println("=== Loop + Arrow Lambda ===")
+
+    // ── loop 语句 ──
+    println("--- Loop Statement ---")
+    var i: i32 = 0
+    var sum: i32 = 0
+    loop {
+        if i >= 10 { break }
+        sum = sum + i
+        i = i + 1
+    }
+    check(sum == 45, "loop: sum 0..9 = 45")
+
+    // loop + continue
+    var j: i32 = 0
+    var evens: i32 = 0
+    loop {
+        j = j + 1
+        if j > 20 { break }
+        if j % 2 != 0 { continue }
+        evens = evens + 1
+    }
+    check(evens == 10, "loop+continue: 10 evens")
+
+    // loop 作为表达式（break 带值）— 探测：loop 是否可作为表达式
+    // 注：loop 是语句，不是表达式；break 不带值。用 var 替代
+    var k: i32 = 0
+    var result: i32 = 0
+    loop {
+        if k >= 5 { break }
+        result = k * 2
+        k = k + 1
+    }
+    check(result == 8, "loop: last result (k=4, 4*2=8)")
+
+    // 嵌套 loop + break
+    var total: i32 = 0
+    var a: i32 = 0
+    loop {
+        var b: i32 = 0
+        loop {
+            if b >= 3 { break }
+            total = total + 1
+            b = b + 1
+        }
+        a = a + 1
+        if a >= 4 { break }
+    }
+    check(total == 12, "nested loop: 4*3=12")
+
+    // ── arrow lambda ──
+    println("--- Arrow Lambda ---")
+    val doubled = apply(fun(n: i32): i32 { n * 2 }, 21)
+    check(doubled == 42, "arrow lambda: single param")
+
+    val added = apply2(fun(a: i32, b: i32): i32 { a + b }, 3, 4)
+    check(added == 7, "arrow lambda: two params")
+
+    // 无参数 arrow lambda — 探测：() => expr 是否支持
+    // 注：() 被解析为 unit 值，不是空参数列表。改用 fun() body
+    val getter = fun(): i32 { 99i32 }
+    check(getter() == 99, "arrow lambda: no params (via fun)")
+
+    // arrow lambda 捕获外部变量
+    val base = 100i32
+    val capturer = fun(n: i32): i32 { base + n }
+    check(capturer(5) == 105, "arrow lambda: capture")
+
+    // arrow lambda 链式
+    val chain = apply(fun(x: i32): i32 { apply(fun(y: i32): i32 { y * 3 }, x) }, 5)
+    check(chain == 15, "arrow lambda: nested call")
+
+    // arrow lambda 复合表达式
+    val complex = apply(fun(n: i32): i32 {
+        val sq = n * n
+        sq + 1
+    }, 5)
+    check(complex == 26, "arrow lambda: block body")
+
+    summary()
+}

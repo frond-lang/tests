@@ -1,0 +1,114 @@
+// p24_ref_equality_nonnull.frond — 引用相等 === / !== + 非空断言 ! + 传播 ? 专项测试
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+type Pt = Pt(x: i32, y: i32)
+
+pub fun main(): void {
+    println("=== Ref Equality + NonNull + Propagate ===")
+
+    // ── 引用相等 === / !== ──
+    println("--- Ref Equality ---")
+    val s1 = "hello"
+    val s2 = "hello"
+    val s3 = s1
+    // 值相等
+    check(s1 == s2, "str value eq")
+    // 引用相等（同变量）
+    check(s1 === s3, "str ref same var")
+    // 引用不等（不同构造，即使值相等）
+    // 探测：s1 === s2 是 true 还是 false？
+    println("  INFO: s1 === s2 = {s1 === s2} (impl-dependent)")
+
+    // 数组引用相等
+    val arr1 = [1i32, 2, 3]
+    val arr2 = [1i32, 2, 3]
+    val arr3 = arr1
+    check(arr1 == arr2, "arr value eq")
+    check(arr1 === arr3, "arr ref same var")
+    check(arr1 !== arr2, "arr ref neq different alloc")
+
+    // record 引用相等
+    val p1 = Pt(1, 2)
+    val p2 = Pt(1, 2)
+    val p3 = p1
+    check(p1 == p2, "record value eq")
+    check(p1 === p3, "record ref same var")
+    check(p1 !== p2, "record ref neq different alloc")
+
+    // ── 非空断言 ! ──
+    println("--- NonNull Assert ---")
+    val maybe: i32? = 42i32
+    val definite = maybe!
+    check(definite == 42, "nonnull assert: some")
+
+    // 链式 !.
+    type Wrapper = Wrapper(inner: i32?)
+    val w: Wrapper? = Wrapper(99i32)
+    val chained = w!.inner!
+    check(chained == 99, "nonnull chain: w!.inner!")
+
+    // ! 在表达式中
+    val val2 = (maybe! + 1) * 2
+    check(val2 == 86, "nonnull in expr")
+
+    // ── 传播 ? （后缀）──
+    println("--- Propagate ---")
+    fun might_fail(): i32? { 42i32 }
+    fun process(): i32? {
+        val v = might_fail()?
+        v + 1
+    }
+    val r = process()
+    check(r == 43, "propagate: some path")
+
+    // null 传播
+    fun get_null(): i32? { null }
+    fun propagate_null(): i32? {
+        get_null()?
+    }
+    val rn = propagate_null()
+    check(rn == null, "propagate: null path")
+
+    // ── 安全访问深链 ?. ──
+    println("--- Safe Access Deep ---")
+    type Inner = Inner(value: i32)
+    type Middle = Middle(inner: Inner?)
+    type Outer = Outer(middle: Middle?)
+    val o: Outer? = Outer(Middle(Inner(42)))
+    val deep = o?.middle?.inner?.value
+    check(deep == 42, "deep safe access: 3 levels")
+
+    val n: Outer? = Outer(null)
+    val r2 = n?.middle?.inner?.value
+    check(r2 == null, "deep safe access: null middle")
+
+    val nullOuter: Outer? = null
+    val r3 = nullOuter?.middle?.inner?.value
+    check(r3 == null, "deep safe access: null outer")
+
+    // ?. + ?? 组合
+    val default = o?.middle?.inner?.value ?? 0i32
+    check(default == 42, "safe access + ?? some")
+    val default2 = nullOuter?.middle?.inner?.value ?? 0i32
+    check(default2 == 0, "safe access + ?? default")
+
+    summary()
+}

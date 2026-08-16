@@ -2,7 +2,7 @@
 out/
 
 # Compiled artifacts
-*.kzo
+*.fndo
 
 # macOS
 .DS_Store

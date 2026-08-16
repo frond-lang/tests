@@ -1,0 +1,193 @@
+// p25_patterns_defer.frond — 位置模式 + or-pattern深组合 + match控制流 + defer赋值 专项测试
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// 位置字段构造子
+type Pair = Pair(i32, str)
+type Triple = Triple(i32, i32, i32)
+
+// or-pattern 类型
+type Color = | Red | Green | Blue | Yellow | Purple
+type Shape = | Circle(f64) | Square(f64) | Triangle(f64, f64)
+
+pub fun main(): void {
+    println("=== Patterns + Defer ===")
+
+    // ── 位置字段模式 ──
+    println("--- Positional Pattern ---")
+    fun describe(p: Pair): str {
+        match p {
+            Pair(0, _) => "zero first"
+            Pair(_, "") => "empty str"
+            Pair(a, b) => "{a}-{b}"
+        }
+    }
+    check(describe(Pair(0, "x")) == "zero first", "pos: zero first")
+    check(describe(Pair(5, "")) == "empty str", "pos: empty str")
+    check(describe(Pair(1, "hello")) == "1-hello", "pos: normal")
+
+    // 位置模式嵌套
+    fun sum_triple(t: Triple): i32 {
+        match t {
+            Triple(0, 0, 0) => 0
+            Triple(a, b, c) => a + b + c
+        }
+    }
+    check(sum_triple(Triple(1, 2, 3)) == 6, "pos: sum triple")
+    check(sum_triple(Triple(0, 0, 0)) == 0, "pos: zero triple")
+
+    // 位置模式 + 通配符
+    fun first(t: Triple): i32 {
+        match t {
+            Triple(a, _, _) => a
+        }
+    }
+    check(first(Triple(99, 0, 0)) == 99, "pos: first only")
+
+    // ── or-pattern 深组合 ──
+    println("--- Or-Pattern Deep ---")
+    fun is_primary(c: Color): bool {
+        match c {
+            Red | Green | Blue => true
+            Yellow | Purple => false
+        }
+    }
+    check(is_primary(Red) == true, "or: Red primary")
+    check(is_primary(Blue) == true, "or: Blue primary")
+    check(is_primary(Yellow) == false, "or: Yellow not primary")
+    check(is_primary(Purple) == false, "or: Purple not primary")
+
+    // or-pattern + guard
+    fun area(s: Shape): f64 {
+        match s {
+            Circle(r) | Square(r) if r > 0.0f64 => 3.14f64 * r * r
+            Circle(r) | Square(r) => 0.0f64
+            Triangle(base, height) => 0.5f64 * base * height
+        }
+    }
+    check(area(Circle(2.0f64)) == 12.56f64, "or+guard: Circle positive")
+    check(area(Circle(0.0f64)) == 0.0f64, "or+guard: Circle zero")
+    val sq_area = area(Square(3.0f64))
+    println("  INFO: area(Square(3.0)) = {sq_area} (expect ~28.26)")
+    check(sq_area > 28.0f64 && sq_area < 29.0f64, "or+guard: Square positive")
+    check(area(Triangle(4.0f64, 5.0f64)) == 10.0f64, "or+guard: Triangle")
+
+    // or-pattern + 通配符
+    fun classify(c: Color): str {
+        match c {
+            Red | Green | Blue => "rgb"
+            _ => "other"
+        }
+    }
+    check(classify(Red) == "rgb", "or+wild: Red")
+    check(classify(Yellow) == "other", "or+wild: Yellow")
+
+    // ── match 控制流（break/continue/return）──
+    println("--- Match Control Flow ---")
+    // match arm 中的 break
+    var i: i32 = 0
+    while i < 10 {
+        match i {
+            5 => { break }
+            _ => {}
+        }
+        i = i + 1
+    }
+    check(i == 5, "match break: stopped at 5")
+
+    // match arm 中的 continue
+    var j: i32 = 0
+    var sum: i32 = 0
+    while j < 5 {
+        j = j + 1
+        match j % 2 {
+            0 => { continue }
+            _ => { sum = sum + j }
+        }
+    }
+    // j=1: odd, sum=1; j=2: even, continue; j=3: odd, sum=4; j=4: even, continue; j=5: odd, sum=9
+    check(sum == 9, "match continue: odd sum 1+3+5=9")
+
+    // match arm 中的 return
+    fun find(arr: i32[], target: i32): i32 {
+        var k: i32 = 0
+        while k < arr.len() {
+            match arr[k] {
+                t if t == target => { return k }
+                _ => {}
+            }
+            k = k + 1
+        }
+        -1
+    }
+    check(find([10i32, 20, 30], 20) == 1, "match return: found at 1")
+    check(find([10i32, 20, 30], 99) == -1, "match return: not found")
+
+    // ── defer 赋值 ──
+    println("--- Defer Assign ---")
+    var log: str = ""
+    fun with_defer(): i32 {
+        var y: i32 = 0
+        defer y = 42
+        log = log + "body "
+        y
+    }
+    val ret = with_defer()
+    // y 在 return 时还是 0，defer 在 return 后赋值
+    check(ret == 0, "defer assign: returns before defer")
+    // defer 在函数返回后执行了 y=42，但 y 是局部变量，外部不可见
+    check(log == "body ", "defer assign: body executed")
+
+    // defer 修改全局
+    var g: i32 = 0
+    fun modify_global(): void {
+        defer g = 99
+        g = 10
+    }
+    modify_global()
+    // defer LIFO: 先 g=10，defer 后 g=99
+    check(g == 99, "defer assign: global modified by defer")
+
+    // defer 多个赋值 LIFO
+    var seq: str = ""
+    fun multi_defer(): void {
+        defer seq = seq + "A"
+        defer seq = seq + "B"
+        defer seq = seq + "C"
+        seq = seq + "body|"
+    }
+    multi_defer()
+    // LIFO: body| then C then B then A
+    println("  INFO: seq = '{seq}' (expect 'body|CBA')")
+    check(seq == "body|CBA", "defer multi assign: LIFO")
+
+    // defer 字段赋值
+    type Box2 = Box2(v: i32)
+    var b = Box2(0)
+    fun defer_field(): void {
+        defer b.v = 77
+        b.v = 10
+    }
+    defer_field()
+    println("  INFO: b.v = {b.v} (expect 77)")
+    check(b.v == 77, "defer field assign: last write wins")
+
+    summary()
+}

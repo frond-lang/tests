@@ -1,0 +1,153 @@
+// 功能验证：std.os（环境变量 / tty 检测 / 进程信息 / 工作目录 / 系统信息）
+// 同时覆盖 io 域的 File.stat_of（metadata 已有 API，此处作回归锚点）
+//
+// 写法上刻意使用 Frond 的语言特性：
+//   - Throw 是一等值：check_result 直接接收 Throw 值统一断言
+//   - `?` 传播解包、match 穷尽、defer 清理、字符串插值、ADT 模式
+import std.os.Env
+import std.os.Tty
+import std.os.Proc
+import std.os.Info
+import std.os.Os
+import std.io.File
+import std.io.Fs
+import std.io.Dir
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+// Throw<void, OsError> 作为一等值传入，统一「应成功」断言
+fun check_ok(result: Throw<void, OsError>, name: str): void {
+    match result {
+        Ok(_) => check(true, name),
+        Err(e) => check(false, "{name} ({e.type_name()}: {e.msg})"),
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun env_roundtrip(): void {
+    println("-- Env --")
+    check(Env.get("FROND_OS_TEST_MISSING_XYZ") == "", "get missing -> empty")
+
+    check_ok(Env.set("FROND_OS_TEST_VAR", "hello-os"), "set")
+    check(Env.get("FROND_OS_TEST_VAR") == "hello-os", "set then get")
+
+    check_ok(Env.set("FROND_OS_TEST_VAR", "second"), "overwrite")
+    check(Env.get("FROND_OS_TEST_VAR") == "second", "overwrite visible")
+
+    check_ok(Env.remove("FROND_OS_TEST_VAR"), "remove")
+    check(Env.get("FROND_OS_TEST_VAR") == "", "remove then get -> empty")
+}
+
+fun tty_checks(): void {
+    println("-- Tty --")
+    // 打开一个普通文件：fd 一定不是 tty（不依赖运行环境的 stdin 类型）
+    // defer 体内直接 await 的形状已修复（async 占位类型根因，见
+    // concretize_type 的 Generic 分支）——恢复 defer 写法作为回归锚。
+    val f = match File.open("src/Main.frond", File.read_only()).await() {
+        Ok(f) => f,
+        Err(e) => { check(false, "open for tty check ({e.msg})"); return }
+    }
+    defer {
+        val _ = f.close().await()
+    }
+    check(f.fd >= 0 && Tty.is_tty(f.fd as i32) == false, "regular file fd is not a tty")
+    check(true, "sync fn + defer with direct await returns (regression anchor)")
+}
+
+fun proc_checks(): void {
+    println("-- Proc --")
+    val pid = Proc.getpid()
+    check(pid > 0, "getpid > 0 (got {pid})")
+
+    match Proc.system("echo frond-sys > os_sys_test.txt") {
+        Ok(rc) => check(rc == 0, "system exit code 0 (got {rc})"),
+        Err(e) => check(false, "system ({e.msg})"),
+    }
+    // 直连 match await 的 str 传递曾是 await 值传递族 bug（async 占位类型
+    // 根因），已修复——恢复直连 match 写法作为回归锚。
+    match Fs.read_file("os_sys_test.txt").await() {
+        Ok(out) => check(out.len() >= 8, "system shell redirect content (len {out.len()})"),
+        Err(e) => check(false, "read shell redirect ({e.msg})"),
+    }
+    val _ = File.remove("os_sys_test.txt").await()
+}
+
+fun info_checks(): void {
+    println("-- Info --")
+    val names = ["windows", "linux", "macos"]
+    var matched = false
+    for n in names.iter() {
+        if Info.os_name() == n { matched = true }
+    }
+    check(matched, "os_name in {{windows, linux, macos}} (got {Info.os_name()})")
+    check(Info.arch().len() > 0, "arch non-empty (got {Info.arch()})")
+    check(Info.hostname().len() > 0, "hostname non-empty")
+    check(Info.path_sep().len() == 1, "path_sep single char")
+    check(Info.line_sep().len() >= 1, "line_sep non-empty")
+}
+
+fun cwd_checks(): void {
+    println("-- Os (cwd) --")
+    val home = match Os.current_dir() {
+        Ok(c) => c,
+        Err(e) => { check(false, "current_dir ({e.msg})"); return }
+    }
+    check(home.len() > 0, "current_dir non-empty")
+
+    // 建临时目录 -> chdir 进去 -> 验证 -> 显式清理（同步函数 defer 内 await 仍会挂起，故不用 defer）
+    val sub = "frond_os_test_tmp"
+    val _ = Dir.create(sub, false).await()
+    var inside = ""
+    match Os.set_current_dir(sub) {
+        Ok(_) => {
+            match Os.current_dir() {
+                Ok(c) => { inside = c },
+                Err(e) => check(false, "current_dir inside ({e.msg})"),
+            }
+        },
+        Err(e) => check(false, "set_current_dir ({e.msg})"),
+    }
+    check(inside.len() > 0 && inside != home, "cwd changed after set_current_dir (got {inside})")
+    val _ = Os.set_current_dir(home)
+    val _ = Dir.remove(sub, true).await()
+}
+
+fun stat_checks(): void {
+    println("-- File.stat_of (io metadata anchor) --")
+    match File.stat_of("src/Main.frond").await() {
+        Ok(st) => {
+            check(st.kind == FileKind.File, "kind is File")
+            check(st.size > 0u64, "size > 0 (got {st.size})")
+            check(st.mtime_ns > 0, "mtime_ns > 0")
+        },
+        Err(e) => check(false, "stat_of ({e.msg})"),
+    }
+}
+
+fun main(): void {
+    println("=== std.os ===")
+    env_roundtrip()
+    tty_checks()
+    proc_checks()
+    info_checks()
+    cwd_checks()
+    stat_checks()
+    summary()
+}

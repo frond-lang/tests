@@ -105,7 +105,7 @@
 - **现象**：`fun make(): IntFn { fun(): i64 { if true { return "s" } 0i64 } }` 报 `return type mismatch: expected '() -> i64', found 'i64'`——return 被拿去和外层函数的 IntFn 比对。
 - **根因**：ExprInfer 的 Lambda 分支推断 body 时未设置 `self.expected_return`，Stmt::Return 沿用了外层函数的期望类型。
 - **修复**：lambda 有 `: T` 标注时，body 推断前设置 `expected_return = Some(T)`，推断后恢复。lambda 无标注仍走原有报错路径。
-- **验证**：missing_return 套件 lambdaReturn 用例 + negative/lambda_return_checked_against_lambda.kz 通过。
+- **验证**：missing_return 套件 lambdaReturn 用例 + negative/lambda_return_checked_against_lambda.frond 通过。
 
 ### Bug #92：range 运算符 `a..b` 从未可用（P0）
 
@@ -188,7 +188,7 @@
   - 影响面：stdlib 中 BufReader.read_line、Dir 遍历、TcpStream.read_until 等大量方法在循环内写字段——**这些代码从未被任何测试运行过**（无 IO 测试），#99 一旦修复即是它们的首次正确性验证。
 - **已做的部分修复（保留）**：Assign.rs implicit-this 分支补接 effect 链（独立正确，缓解乱序）。
 - **修复方向**（下次专项）：(a) 排查循环体帧对 Value::Ref 的快照/重置是否深拷 record，改为共享 Arc；(b) 或将 implicit-this 字段写改为函数式更新 + 变量重绑（复用局部变量的 writeback/loop-carried 机制，该机制已被证明正确）。二选一需要与"迭代器尾递归模式必须继续工作"的语义对齐。
-- **dogfood_json 套件**：完整 JSON 解析器（~400 行，递归下降+转义+错误路径 36 断言）已就绪，frond.toml 改名 disabled 待 #99 修复后启用。#97/#98 修复使其中标量/错误路径用例已可通过；数组/对象解析因 #99 阻塞。
+- **dogfood_json 套件**：完整 JSON 解析器（~400 行，递归下降+转义+错误路径 36 断言）已就绪，Root.toml 改名 disabled 待 #99 修复后启用。#97/#98 修复使其中标量/错误路径用例已可通过；数组/对象解析因 #99 阻塞。
 
 ### Bug #99 修复 + Bug #100 修复（2026-08-14 续,dogfood_json 追踪）
 
@@ -219,7 +219,7 @@
 3. Subgraph.rs start_subgraph same_function 路径创建子帧时立即用 parent_frame 接链——原"由 setup_frame_chain 稍后设置"在 caller 正在处理（不在 map）时永不生效。
 
 **残留2 edge_stress 冒泡 2 断言**——根因：var_home 按名字首次绑定（entry().or_insert），同名变量二次声明（"si"先驱动求和循环、再声明驱动冒泡外层）时 home 仍是第一次的节点，第二次的初值 0 写不进 home 槽，冒泡从第一次的终值（3/1000）起跑。修复：Stmt.rs ValDecl/VarDecl 改用新 `declare_var`（bind + 强制重置 var_home）。
-- 事故记录：定位期间 edge_stress/src/Main.kz 被前缀二分覆盖，已按原始断言清单重建（断言名与语义不变，实现等价重写，文件头注明）。
+- 事故记录：定位期间 edge_stress/src/Main.frond 被前缀二分覆盖，已按原始断言清单重建（断言名与语义不变，实现等价重写，文件头注明）。
 
 **残留3 utf-8 段/嵌套数组断言**——
 - utf-8：新引擎 bug #101（见上表），Parser.rs unescape 慢路径改为整字符 decode（chars().next() + len_utf8()）。修复后 ""你好"" chars=4 bytes=8 正确。
@@ -1564,7 +1564,7 @@
 - **根因**：`Ok(1i32)` 构造时错误类型未被约束（`Ok<T, E>` 的 `E` 是 fresh type var），`type annotation mismatch` 报错时直接 `arena.display(val_ty)` 渲染，`TypeDisplay` 对 `Ty::TypeVar(idx)` 输出 `'_<idx>`（见 Display.rs:22）。用户无法理解 `'_529` 的含义。
 - **影响**：错误信息可读性差，"杠精用户"难以从报错定位问题。仅影响含未约束 type var 的值（Ok/Error 构造、未标注的泛型函数返回值等）。
 - **修复**：修改 `Display.rs` 的 `TypeVar` 分支，将 `write!(f, "'_{}", idx)` 改为 `f.write_str("'_")`。隐藏内部索引，与 Rust 匿名生命周期 `'_` 显示惯例一致。这是通用修改，所有使用 TypeDisplay 的地方都会受益。
-- **验证**：`edge_nested_types/negative/array_of_throw_elem_mismatch.kz` 现输出 `found 'Throw<i32, '_>[1]'`；全部 9 个负向用例正常报错；37 个功能测试 sema check 全部通过；`cargo test --lib` 14/14 PASS。
+- **验证**：`edge_nested_types/negative/array_of_throw_elem_mismatch.frond` 现输出 `found 'Throw<i32, '_>[1]'`；全部 9 个负向用例正常报错；37 个功能测试 sema check 全部通过；`cargo test --lib` 14/14 PASS。
 
 ---
 
@@ -1576,10 +1576,10 @@
 - **现象**：在补充测试前，`type annotation mismatch` 错误路径仅由 Bug #23（函数类型别名）间接覆盖，嵌套数组/嵌套 Throw/数组 of Throw/Throw of 数组/nullable 数组/嵌套函数类型等注解不匹配场景**完全无测试**。Display.rs 的递归渲染（`i32[][]`、`Throw<Throw<i32,Error>,Error>`）虽有实现但无回归保护。
 - **根因**：现有 functional 测试均为正向用例（能编译通过），无负向用例触发 `type annotation mismatch`。
 - **修复**：新增 `tests/functional/edge_nested_types/` 目录：
-  - `src/Main.kz`：10 节正向测试（2D/3D 数组、嵌套 Throw、数组 of Throw、Throw of 数组、嵌套函数类型、nullable 数组、record 嵌套字段、函数签名嵌套注解、混合 `Throw<i32[]?, Error>`），全部 ALL PASSED
+  - `src/Main.frond`：10 节正向测试（2D/3D 数组、嵌套 Throw、数组 of Throw、Throw of 数组、嵌套函数类型、nullable 数组、record 嵌套字段、函数签名嵌套注解、混合 `Throw<i32[]?, Error>`），全部 ALL PASSED
   - `negative/`：7 个负向用例（`frond debug --stage check` 均退出 1），覆盖维度不匹配、元素类型不匹配、嵌套 Throw 内部不匹配、数组 of Throw 元素不匹配、Throw of 数组元素不匹配、nullable 数组元素不匹配、函数返回值不匹配
 - **验证**：正向 `frond run` ALL PASSED；负向 7/7 报 `type annotation mismatch` 且 expected/found 显示正确（除 Bug #58 的 `'_NNN` 显示瑕疵）。
-- **附注**：测试中 `frond.toml` 的 `entry` 应为 `src/Main.kz`，但现存 `edge_arrays` 等目录误写为 `src/Main.frond`（main.rs 的 DEFAULT_ENTRY 与 read_source 实际读 `.kz`，manifest 的错误 entry 在 `frond run`（无参，走 resolve_entry_path 读 manifest）时会触发 "No such file"，需用 `frond debug` 绕过）。建议统一修正现存 toml。
+- **附注**：测试中 `Root.toml` 的 `entry` 应为 `src/Main.frond`，但现存 `edge_arrays` 等目录误写为 `src/Main.frond`（main.rs 的 DEFAULT_ENTRY 与 read_source 实际读 `.frond`，manifest 的错误 entry 在 `frond run`（无参，走 resolve_entry_path 读 manifest）时会触发 "No such file"，需用 `frond debug` 绕过）。建议统一修正现存 toml。
 
 ---
 
@@ -1604,8 +1604,8 @@
   - 方案 B（全宽，递归 widening）：在 `try_widen_unify` 中新增 Array 分支，当两侧都是 Array 时递归对元素调用 `try_widen_unify`，让 numeric widening 透传到元素层。
   - **当前不一致状态不可接受**，必须二选一。
 - **复现**：
-  - `tests/functional/edge_nested_types/positive_widening.kz`（标量 + Throw 通过，exit 0）
-  - `tests/functional/edge_nested_types/negative/widening_inconsistency.kz`（数组报错，exit 1）
+  - `tests/functional/edge_nested_types/positive_widening.frond`（标量 + Throw 通过，exit 0）
+  - `tests/functional/edge_nested_types/negative/widening_inconsistency.frond`（数组报错，exit 1）
   - 两者共同钉死当前不一致行为，修复后需同步更新期望
 
 ---
@@ -1640,7 +1640,7 @@
   2. 别名本是为可读性而生，报错展开别名削弱了别名的价值
   3. 对比 Rust（保留类型别名名）、TypeScript（保留别名），Frond 此行为不符合主流语言惯例
 - **建议修复**：在 `TypeHandle` 或 `Ty` 中增加可选的"源别名名"元数据（`origin_alias: Option<Symbol>`），`concretize_type` 解析别名时记录原名，`TypeDisplay` 优先渲染别名名（可附 `= <底层类型>` 辅助）。或更轻量：在 mismatch 报错路径保留 AST 层的 `TypeRef`，用 AST 节点信息渲染 expected 侧。
-- **复现**：`tests/functional/edge_nested_types/negative/alias_expanded_in_error.kz`（exit 1，当前显示展开形式）
+- **复现**：`tests/functional/edge_nested_types/negative/alias_expanded_in_error.frond`（exit 1，当前显示展开形式）
 
 ---
 
@@ -1745,7 +1745,7 @@
 - **根因**（return 场景）：代码分析显示 return 42（i32）不触发 throw 传播路径，return 场景的根因待运行时验证确认。
 - **影响**：任何在 defer + throw 函数调用之后的代码都可能不执行。defer 是语言核心特性，此 bug 使 defer 在实际代码中不可用。
 - **修复**：移除 Compute.rs `run_frame_sync_inner` 中 Call 节点对 `ThrowVal(Err)` 的无条件 Return 传播。Throw 值是数据，应流向下游消费者（match/let/`?`）；只有 `?` 操作符（compute_propagate）和 throw 语句本身才将 Throw 错误转为控制流 Return。这与 async 路径（Subgraph.rs）的控制信号传播逻辑保持一致。
-- **复现**：见上方代码；测试 probe `tests/functional/troll_battery/probes/p15_defer_throw.kz`
+- **复现**：见上方代码；测试 probe `tests/functional/troll_battery/probes/p15_defer_throw.frond`
 
 ---
 
@@ -1852,7 +1852,7 @@
 
 ## 杠精电池批次（2026-08-10）
 
-> 从用户视角对 Frond 全特性做"杠精"测试，不参考已有测试用例，独立设计探针。测试位于 `tests/functional/troll_battery/`，每个探针为独立 `.kz` 文件。下列编号续接 #70。
+> 从用户视角对 Frond 全特性做"杠精"测试，不参考已有测试用例，独立设计探针。测试位于 `tests/functional/troll_battery/`，每个探针为独立 `.frond` 文件。下列编号续接 #70。
 
 ## Bug #71：整数取模零静默返回 0（与 #62 同类，未覆盖）
 
@@ -1866,7 +1866,7 @@
 - **根因**：与 #62（整数除以零静默返回 0）同一类缺陷，但取模路径未一并修复。`% 0` 在数学上未定义，应 panic 或报错。
 - **影响**：掩盖程序错误；用户无法依赖取模零触发失败来发现 bug。
 - **建议修复**：与 #62 统一处理 — 整数 `/0` 和 `%0` 都应 panic（或提供 `checked_rem` 而默认 panic），保持语义一致。
-- **复现**：`tests/functional/troll_battery/probes/p13_int_mod_zero.kz`
+- **复现**：`tests/functional/troll_battery/probes/p13_int_mod_zero.frond`
 
 ---
 
@@ -1883,7 +1883,7 @@
 - **根因**：字面量范围检查只在 IR 阶段做，sema 阶段未做。IDE/LSP 走 check 阶段会漏报，用户以为类型正确，运行/构建才报错。
 - **影响**：编辑器诊断与编译结果不一致；用户体验割裂。
 - **建议修复**：在 sema 阶段对带类型后缀的整数字面量做范围检查（i8/u8/.../i64/u64 各自范围），与 IR 阶段共用一套范围常量。
-- **复现**：`tests/functional/troll_battery/probes/p13_lit_overflow_i8.kz`，对比 `--stage check` 与 `run` 输出
+- **复现**：`tests/functional/troll_battery/probes/p13_lit_overflow_i8.frond`，对比 `--stage check` 与 `run` 输出
 
 ---
 
@@ -1901,7 +1901,7 @@
 - **根因**：sema 对不同位宽整数的 `+`/`==` 等运算做隐式提升，不要求显式 `cast`，也不报类型不匹配。
 - **影响**：违反用户偏好（Rust 风格严格类型，区分字面量可提升与显式变量严格统一）；用户无法通过类型系统发现位宽混淆错误（如把 i32 当 i64 累加导致精度假设错误）。
 - **建议修复**：显式类型注解的变量之间，不同位宽运算应报类型错误，要求显式 `cast`；仅裸字面量允许提升。与项目 memory 中"区分字面量与显式变量"的偏好一致。
-- **复现**：`tests/functional/troll_battery/probes/p13_mix_i8_i16.kz`、`p13_mix_i32_i64.kz`、`p13_eq_i32_i64.kz`
+- **复现**：`tests/functional/troll_battery/probes/p13_mix_i8_i16.frond`、`p13_mix_i32_i64.frond`、`p13_eq_i32_i64.frond`
 
 ---
 
@@ -1918,7 +1918,7 @@
 - **根因**：sema 允许 `i32 == f64` 与 `i32 + f64` 通过，但运行时既不做数值正确提升（`1i32==1.0` 应为 true），也不报类型错误，而是给出错误结果。`1i32 + 1.0 = 2` 暗示 f64 操作数被截断为 i32 后参与整数运算。
 - **影响**：**静默错误结果**是最严重的一类 bug — 用户得到错误答案却无任何警告。跨类型比较/运算要么报类型错误（严格），要么正确提升（`1==1.0` 为 true，`1+1.0=2.0`），不能既允许又算错。
 - **建议修复**：sema 阶段禁止 `i32` 与 `f64` 直接 `==`/`+` 等运算，要求显式 `cast` 统一类型后再运算；或定义明确的提升规则并正确实现。
-- **复现**：`tests/functional/troll_battery/probes/p13_eq_int_float.kz`、`p13_add_int_float.kz`
+- **复现**：`tests/functional/troll_battery/probes/p13_eq_int_float.frond`、`p13_add_int_float.frond`
 
 ---
 
@@ -1940,7 +1940,7 @@
 - **根因**：所有整数算术默认 wrap（release 语义），无 debug panic 模式，也无 `checked_add`/`wrapping_add`/`overflowing_add` 等显式运算符。
 - **影响**：用户无法在调试时捕获溢出 bug；性能优先可接受 wrap，但应提供溢出检查选项。
 - **建议修复**：提供 `checked_*` 系列 stdlib 函数（返回 `Throw<T, OverflowError>`），或编译选项 `-C overflow-checks=on`。
-- **复现**：`tests/functional/troll_battery/src/Main.kz` R2–R5
+- **复现**：`tests/functional/troll_battery/src/Main.frond` R2–R5
 
 ---
 
@@ -1958,7 +1958,7 @@
 - **根因**：允许同名 `val` 被 `var` 遮蔽（反之亦然）。`val` 本应承诺不可变，但遮蔽后同名绑定变为可变，用户对 `val` 的不可变预期被打破。
 - **影响**：`val` 的不可变保证仅对当前绑定生效，遮蔽后失效；代码审查时难以追踪可变性变化。
 - **建议修复**：要么禁止 `val`→`var` 与 `var`→`val` 的可变性改变遮蔽（允许同可变性遮蔽），要么在允许时给出 warning。
-- **复现**：`tests/functional/troll_battery/probes/p14_shadow_val_to_var.kz`
+- **复现**：`tests/functional/troll_battery/probes/p14_shadow_val_to_var.frond`
 
 ---
 
@@ -1980,7 +1980,7 @@
 - **根因**：defer 帧在执行 defer body（如 `println`）时会因为函数调用而 suspend，但 main 帧在 `run_frame_nodes` 的 defer 执行循环中直接将自身标记为 `Completed`，导致 `process_frame` 设置 `self.result` 后事件循环退出，suspended 的 defer 帧永远没有机会被调度执行。普通函数帧的 defer 能正常执行是因为调用者在等待子帧完成，事件循环不会提前退出。
 - **影响**：用户在 main 里放的清理逻辑（关闭文件、刷新缓冲、释放资源）全部丢失，可能导致数据损坏或资源泄漏。这是最常见的 defer 使用场景之一。
 - **修复**：在 Engine 上新增 `defer_frames`（区分 defer 帧与普通子帧）和 `defer_waiters`（记录每个帧等待的 defer 帧计数）两个字段。`init_defer_frame` 设置 defer 帧的 `caller` 为父帧并注册到 `defer_frames`。`run_frame_nodes` 的 defer 执行循环中，若有 defer 帧 suspended（`pending_defer_count > 0`），当前帧不标记 `Completed` 而是 `Suspended`，并在 `defer_waiters` 中记录待完成计数。`process_frame` 的 `Completed`/`Failed` 分支拦截 defer 帧完成，递减父帧的 `defer_waiters` 计数，当计数归零时直接终结父帧（不重新执行 `run_frame_nodes`，避免 defer 重复执行）。`Suspended` 分支跳过 defer-waiter 的 `pending_completions`/`pending_events` 处理。
-- **复现**：`tests/functional/troll_battery/probes/p15_defer_basic.kz`、`p15_defer_in_fn.kz`（对比）
+- **复现**：`tests/functional/troll_battery/probes/p15_defer_basic.frond`、`p15_defer_in_fn.frond`（对比）
 
 ---
 
@@ -2015,8 +2015,8 @@
 - **修复**：
   1. 引擎 panic 部分已修复：`Subgraph.rs::complete_and_wake_caller` 的 LoopBody 分支在多 worker 并发场景下，loop_frame 可能被另一个 worker 暂时取出，原先直接 panic。改为当 loop_frame 不在 frames 中时，将完成信息存入 `pending_completions`，由 `process_frame` 在 loop_frame 重新插入后重放。同时 `Schedule.rs` 消费 `pending_completions` 时对所有 call node 传播 `control_signal`（原先仅对 Gate 节点传播，导致 break/return 信号丢失）。
   2. 数据竞争导致的计数偏差属于语言语义范畴：Frond 不对全局可变变量提供隐式同步，并发访问需用户通过 channel 显式同步。这是预期行为（与 Rust 的 `static mut` 语义一致：unsafe + 需用户自行同步），测试用例也以 "expect 2000 if serial, less if race" 标注。后续可通过提供 `Atomic<T>` / 互斥原语改进（特性请求，非 bug）。
-- **修复后行为**：`p15_global_race.kz` 运行稳定输出 `counter=1022 (expect 2000 if serial, less if race)`，不再 panic。
-- **复现**：`tests/functional/troll_battery/probes/p15_global_race.kz`
+- **修复后行为**：`p15_global_race.frond` 运行稳定输出 `counter=1022 (expect 2000 if serial, less if race)`，不再 panic。
+- **复现**：`tests/functional/troll_battery/probes/p15_global_race.frond`
 
 ---
 
@@ -2044,13 +2044,13 @@
 - **根因**：
   1. async 函数最后表达式若为另一个 async 调用（返回 `Async<T>`），未做自动 await 转发，也未报"应 await"错误，而是把 async handle 的内部表示当作返回值（垃圾值 2）。
   2. async 函数最后表达式类型（如 `i32`）与声明返回类型（`Async<i32>`）不匹配时，sema 不报错，运行时静默返回 void。
-  3. `p15_channel_async.kz` 偶发 `v=void` 的独立根因：`Schedule.rs` 的 `ChannelNotify` 处理中，`on_event_arrived` 传递 `Value::VOID` 作为 ChannelReady 事件的值。`apply_event_to_frame` 直接将 VOID 注入到等待的 consumer 的 await 节点，导致 consumer 返回 void 而非从 channel recv 获取的实际值。
+  3. `p15_channel_async.frond` 偶发 `v=void` 的独立根因：`Schedule.rs` 的 `ChannelNotify` 处理中，`on_event_arrived` 传递 `Value::VOID` 作为 ChannelReady 事件的值。`apply_event_to_frame` 直接将 VOID 注入到等待的 consumer 的 await 节点，导致 consumer 返回 void 而非从 channel recv 获取的实际值。
 - **修复**：
   1. 缺陷 1 已修复：在 `Builder.rs::compile_function_body` 中，当函数为 async 且 body 表达式的推断类型为 `Async<T>` 时，自动插入隐式 await 节点（`build_await_node`），将 async handle 解析为内部值 T。新增 `expr_type_is_async` 辅助函数精确判断表达式类型是否为 `Async<T>`（不使用 `infer_event_source_kind` 的 AsyncJoin 默认值，避免误判）。修改所有 5 个 `compile_function_body` 调用点，传入 `is_async` 参数。
   2. 缺陷 2 经验证不复现：`ch.recv()` 返回 `i32`，sema 的 `unify_return_type` 正确处理 `Async<i32>` 声明 vs `i32` body 的类型统一（lines 1082-1086），运行时正确返回 42。
   3. channel 竞态 void 已修复：在 `AsyncRt.rs::apply_event_to_frame` 中，对于 Channel await（`suspend_event` 为 `ChannelReady`），不注入传入的 VOID 值，而是重新 push await 节点让 `compute_await` 重新执行。`compute_await` 会再次调用 `ChannelSource::resolve` 的 `ch.recv()` 获取实际值。如果 channel 为空（数据被其他 consumer 取走），帧重新挂起并重新注册 waiter。这与 select 帧的处理方式一致。
-- **修复后行为**：`p15_async_ret.kz` 稳定输出 `a=42 b=99 c=99`（原先 `b=2`）；`p15_async_forward_await.kz` 输出 `b=99`；`p15_channel_async.kz` 20 次连续运行全部 `v=42`（原先偶发 `v=void`）。
-- **复现**：`tests/functional/troll_battery/probes/p15_async_ret.kz`、`p15_async_forward_await.kz`、`p15_channel_async.kz`
+- **修复后行为**：`p15_async_ret.frond` 稳定输出 `a=42 b=99 c=99`（原先 `b=2`）；`p15_async_forward_await.frond` 输出 `b=99`；`p15_channel_async.frond` 20 次连续运行全部 `v=42`（原先偶发 `v=void`）。
+- **复现**：`tests/functional/troll_battery/probes/p15_async_ret.frond`、`p15_async_forward_await.frond`、`p15_channel_async.frond`
 
 ---
 
@@ -2068,8 +2068,8 @@
   ```
 - **根因**：sema 解析别名时未检测循环引用。`A` 解析为 `B`，`B` 解析为 `A`，形成无限展开，使用时报与循环无关的"expected B"错误，误导用户。现有的 `visiting` 集合循环检测因 `target_type` 短路返回（直接返回预解析的 TypeHandle，不进入递归 `target_type_name` 路径）而失效。
 - **修复**：在 `Inference.rs::check_module_with_env` 中 `populate_module` 之后新增 `check_alias_cycles` 方法。该方法遍历所有 `TypeDefKind::Alias` 类型定义，沿 `target_type_name` 链做 DFS 检测环，发现环时报告 `cyclic type alias: A -> B -> A`。使用跨模块去重集合避免同一环被多个模块重复报告。
-- **修复后行为**：`p16_alias_cycle.kz` 和 `p16_alias_cycle_rt.kz` 在 sema 阶段报告 `cyclic type alias: A -> B -> A` 和 `cyclic type alias: B -> A -> B`。
-- **复现**：`tests/functional/troll_battery/probes/p16_alias_cycle.kz`、`p16_alias_cycle_rt.kz`
+- **修复后行为**：`p16_alias_cycle.frond` 和 `p16_alias_cycle_rt.frond` 在 sema 阶段报告 `cyclic type alias: A -> B -> A` 和 `cyclic type alias: B -> A -> B`。
+- **复现**：`tests/functional/troll_battery/probes/p16_alias_cycle.frond`、`p16_alias_cycle_rt.frond`
 
 ---
 
@@ -2089,7 +2089,7 @@
 - **修复**：在 `Inference.rs::check_module_with_env` 中 `populate_module` 之后新增 `check_duplicate_constructors` 方法，遍历所有 `TypeDefInfo.constructors`，对同名构造子（跨类型）报告 `ambiguous constructor: <name> already defined for type <prev>`，并用 `reported` 集合去重避免跨模块重复报告。
 - **设计变更：改为使用级报错**（2026-08-11）：对齐 Rust/OCaml 模型，移除 `check_duplicate_constructors` 定义级警告。同名构造器定义合法共存，仅在**使用处**裸名调用且类型导向和参数个数都无法消歧时报错（`Inference.rs::infer_call` 中 `ambiguous constructor '<name>': defined by types [...]`）。stdlib 的 `FileKind.File`/`FileKind.Other` 同名不再产生任何警告，36/36 功能测试 sema 检查通过。
 - **保留的基础设施**：`CtorDefInfo.def_span`/`def_module` 和 `SemaError.file_path` 字段保留，供未来跨模块诊断使用。
-- **复现**：`tests/functional/troll_battery/probes/p16_dup_constructor.kz`、`p16_dup_constructor_rt.kz`
+- **复现**：`tests/functional/troll_battery/probes/p16_dup_constructor.frond`、`p16_dup_constructor_rt.frond`
 
 ---
 
@@ -2103,8 +2103,8 @@
   ```
 - **根因**：Record/ADT 构造子字段名未做唯一性检查。`constructor_def_to_ctor_info`/`record_fields_to_ctor_info` 直接收集所有字段名，不检测重复。
 - **修复**：在 `Inference.rs::check_module_with_env` 中 `populate_module` 之后新增 `check_duplicate_ctor_fields` 方法，遍历所有 `TypeDefInfo.constructors`，对每个构造子的 `field_names`（仅命名字段，跳过 `None`）检测重复，报告 `duplicate field '<name>' in constructor <ctor_name>`，并用 `reported` 集合（按 `(field, ctor)` 去重）避免跨模块重复报告。
-- **修复后行为**：`p16_dup_field.kz` sema 阶段报告 `duplicate field 'x' in constructor P`；stdlib 不受影响（已验证 `p16_recursive_type.kz` 输出 `ok`）。
-- **复现**：`tests/functional/troll_battery/probes/p16_dup_field.kz`
+- **修复后行为**：`p16_dup_field.frond` sema 阶段报告 `duplicate field 'x' in constructor P`；stdlib 不受影响（已验证 `p16_recursive_type.frond` 输出 `ok`）。
+- **复现**：`tests/functional/troll_battery/probes/p16_dup_field.frond`
 
 ---
 
@@ -2126,8 +2126,8 @@
 - **修复**：
   1. `unify_or_constrain` 在调用 `unify` 之前先调用 `solver.record_candidate(arena, t1, t2)`，无论 unify 成功还是失败都记录候选。这样 `finalize_solution` 能看到一个 TypeVar 被要求绑定到的**所有**具体类型。
   2. 在 `check_module_with_env` 步骤 9 之后，检查 `solver.errors()`，**仅报告歧义错误**（reason 包含 "ambiguous"）。不报告 "type mismatch" 错误——它们是 `unify_or_constrain` 严格 unify 的副产物，许多可被 `try_widen_unify`（widening/nullable/async 展开）合法解决，报告会产生大量误报。
-- **修复后行为**：`p16_generic_unify.kz` sema 阶段报告 `type mismatch: i32 does not unify with i64 (ambiguous inference for TypeVar502: 2 distinct candidates)`；stdlib 及现有测试无回归。
-- **复现**：`tests/functional/troll_battery/probes/p16_generic_unify.kz`、`p16_generic_unify_rt.kz`
+- **修复后行为**：`p16_generic_unify.frond` sema 阶段报告 `type mismatch: i32 does not unify with i64 (ambiguous inference for TypeVar502: 2 distinct candidates)`；stdlib 及现有测试无回归。
+- **复现**：`tests/functional/troll_battery/probes/p16_generic_unify.frond`、`p16_generic_unify_rt.frond`
 
 ---
 
@@ -2148,8 +2148,8 @@
   1. 在 `Inference.rs::infer_expr` 的 `Expr::Block` 分支中引入 `diverges` 标志：遍历 `stmts` 时，遇到 `Stmt::Return`/`Stmt::Throw`/`Stmt::Break`/`Stmt::Continue` 置 `diverges = true`；下一轮迭代若 `diverges` 已为真，调用 `add_warning_at("unreachable code after throw/return/break/continue", ...)` 并 `break` 停止推断剩余语句。
   2. trailing 表达式同理：若 `diverges` 为真，对 trailing 表达式报告 unreachable 警告，并返回 `Ty::Never`。
   3. 新增警告系统：在 `SemaResult` 中新增 `warnings: Vec<SemaError>` 字段与 `add_warning` 方法；`InferContext` 新增 `add_warning_at` 方法封装写入；`main.rs` 中新增 `prev_warn_len` 追踪并打印每个模块的警告（格式 `path:line:col: warning: msg`）。
-- **修复后行为**：`p16_throw_unreachable.kz` sema 阶段对 throw 后的第 4 行 `val y: i32 = 1i32` 与第 5 行 `y` 分别报告 `unreachable code after throw/return/break/continue` 警告；程序仍正常输出 `ok`。stdlib 及其他测试探针（如 `p16_recursive_type.kz`）无多余警告，无回归。
-- **复现**：`tests/functional/troll_battery/probes/p16_throw_unreachable.kz`
+- **修复后行为**：`p16_throw_unreachable.frond` sema 阶段对 throw 后的第 4 行 `val y: i32 = 1i32` 与第 5 行 `y` 分别报告 `unreachable code after throw/return/break/continue` 警告；程序仍正常输出 `ok`。stdlib 及其他测试探针（如 `p16_recursive_type.frond`）无多余警告，无回归。
+- **复现**：`tests/functional/troll_battery/probes/p16_throw_unreachable.frond`
 
 ---
 

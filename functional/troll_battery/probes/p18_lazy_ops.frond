@@ -1,0 +1,77 @@
+// p18_lazy_ops.frond — Lazy<T> 的构造、memoization 和自动 force 验证
+var force_count: i32 = 0
+
+fun expensive(x: i32): i32 {
+    force_count = force_count + 1
+    x * 2
+}
+
+fun main(): void {
+    // ── 1. 构造时不求值 ──
+    val lz = lazy(expensive(21))
+    if force_count != 0 {
+        println("FAIL: lazy should not evaluate on construction, force_count=" ++ force_count as str)
+        return
+    }
+
+    // ── 2. format 触发 force ──
+    val s = format(lz)
+    if s != "42" {
+        println("FAIL: format(lazy) should be 42, got " ++ s)
+        return
+    }
+    if force_count != 1 {
+        println("FAIL: force should evaluate exactly once, force_count=" ++ force_count as str)
+        return
+    }
+
+    // ── 3. memoization：第二次 format 使用缓存 ──
+    val s2 = format(lz)
+    if s2 != "42" {
+        println("FAIL: second format(lazy) should still be 42, got " ++ s2)
+        return
+    }
+    if force_count != 1 {
+        println("FAIL: second format should use cache, force_count=" ++ force_count as str)
+        return
+    }
+
+    // ── 4. 自动 force：算术运算 ──
+    val lz2 = lazy(expensive(10))  // force_count 仍为 1，构造不求值
+    val y = lz2 + 3i32             // 自动 force → 20 + 3 = 23
+    if force_count != 2 {
+        println("FAIL: arithmetic should auto-force, force_count=" ++ force_count as str)
+        return
+    }
+    if y != 23 {
+        println("FAIL: lazy(20) + 3 should be 23, got " ++ y as str)
+        return
+    }
+
+    // ── 5. 自动 force：比较运算 ──
+    val lz3 = lazy(expensive(5))   // → 10
+    val cmp = lz3 > 8i32           // 自动 force → 10 > 8 = true
+    if force_count != 3 {
+        println("FAIL: comparison should auto-force, force_count=" ++ force_count as str)
+        return
+    }
+    if !cmp {
+        println("FAIL: lazy(10) > 8 should be true")
+        return
+    }
+
+    // ── 6. 自动 force：memoization 跨运算 ──
+    val lz4 = lazy(expensive(100))  // → 200
+    val a = lz4 + 1i32             // force → 201, force_count++
+    val b = lz4 + 2i32             // memoized → 202, force_count 不变
+    if force_count != 4 {
+        println("FAIL: second use of same lazy should memoize, force_count=" ++ force_count as str)
+        return
+    }
+    if a != 201 || b != 202 {
+        println("FAIL: lazy(200)+1=201, lazy(200)+2=202, got " ++ a as str ++ "," ++ b as str)
+        return
+    }
+
+    println("ok")
+}

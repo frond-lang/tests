@@ -1,0 +1,64 @@
+// p34_local_type_confirm.frond — 确认局部类型（函数体内定义的类型）bug
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// 顶层类型 — 应该工作
+type TopBox = TopBox(v: i32) {
+    fun get(): i32 { v }
+    pub fun &set(x: i32): void { v = x }
+}
+
+pub fun main(): void {
+    println("=== Local Type vs Top-level Type ===")
+
+    // 顶层类型
+    val t = TopBox(10)
+    check(t.get() == 10, "top-level type: get()")
+    t.set(20)
+    check(t.get() == 20, "top-level type: set()")
+
+    // 局部类型（函数体内定义）— 探测是否工作
+    type LocalBox = LocalBox(v: i32) {
+        fun get(): i32 { v }
+        pub fun &set(x: i32): void { v = x }
+    }
+
+    val l = LocalBox(10)
+    val lv = l.get()
+    println("  INFO: LocalBox(10).get() = {lv} (expect 10)")
+    check(lv == 10, "local type: get()")
+
+    l.set(20)
+    val lv2 = l.get()
+    println("  INFO: LocalBox.set(20).get() = {lv2} (expect 20)")
+    check(lv2 == 20, "local type: set()")
+
+    // 局部 trait
+    trait LocalShow { fun show(): str }
+    type LocalVal = LocalVal(v: i32) {
+        fun show(): str { "LocalVal({v})" }
+    }
+    val lv3 = LocalVal(42)
+    val s = lv3.show()
+    println("  INFO: LocalVal(42).show() = '{s}' (expect 'LocalVal(42)')")
+    check(s == "LocalVal(42)", "local type+trait: show()")
+
+    summary()
+}

@@ -1,7 +1,0 @@
-[package]
-name = "cast_f128"
-entry = "src/Main.kz"
-
-[build]
-output_dir = "out"
-opt_level = 2

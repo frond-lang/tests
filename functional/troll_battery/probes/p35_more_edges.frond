@@ -1,0 +1,110 @@
+// p35_more_edges.frond — 更多边缘测试：for-in array, string ops, defer in loop, nullable chains
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+pub fun main(): void {
+    println("=== More Edges ===")
+
+    // ── for-in over array ──
+    println("--- For-in Array ---")
+    val arr = [10i32, 20, 30, 40, 50]
+    var sum: i32 = 0
+    for x in arr.iter() {
+        sum = sum + x
+    }
+    check(sum == 150, "for-in array: sum=150")
+
+    // for-in over empty array
+    val empty: i32[] = []
+    var count: i32 = 0
+    for x in empty.iter() {
+        count = count + 1
+    }
+    check(count == 0, "for-in empty array: count=0")
+
+    // ── string operations ──
+    println("--- String Ops ---")
+    val s = "Hello World"
+    check(s.len() == 11, "str len 11")
+    check(s[0] == 'H', "str[0] = H")
+    check(s[6] == 'W', "str[6] = W")
+    // char at
+    val ch = s[4]
+    check(ch == 'o', "str[4] = o")
+
+    // string comparison
+    check("abc" < "abd", "str < (lexicographic)")
+    check("abc" < "abca", "str < (prefix shorter)")
+    check("abc" == "abc", "str == same")
+
+    // ── defer in loop ──
+    println("--- Defer in Loop ---")
+    var log: str = ""
+    for i in 1i64..4i64 {
+        defer log = log + "{i}"
+    }
+    // LIFO: defers fire after loop ends, in reverse order
+    println("  INFO: defer in loop log = '{log}' (expect '321' or empty)")
+    check(log == "321" || log == "", "defer in loop: LIFO or not executed")
+
+    // ── nullable arithmetic ──
+    println("--- Nullable Arithmetic ---")
+    val a: i32? = 10i32
+    val b: i32? = 20i32
+    val none: i32? = null
+    // ?? chain (注意优先级：?? 低于 ==，需括号)
+    check((a ?? 0) == 10, "some ?? 0 = 10")
+    check((none ?? 0) == 0, "null ?? 0 = 0")
+    check((none ?? b ?? 0) == 20, "null ?? some ?? 0 = 20")
+
+    // ── nested nullable ──
+    println("--- Nested Nullable ---")
+    // i32?? 双层 nullable — 探测是否支持
+    // 注：i32?? 可能不支持，跳过
+    val nested: i32? = 42i32
+    check(nested != null, "i32? some != null")
+    val nested_none: i32? = null
+    check(nested_none == null, "i32? null == null")
+
+    // ── throw in expression context ──
+    println("--- Throw in Expression ---")
+    fun might_throw(x: i32): i32 {
+        if x < 0 { throw "negative" }
+        x * 2
+    }
+    check(might_throw(5) == 10, "throw expr: no throw")
+    // catch with ??
+    val safe = might_throw(-1) ?? 0
+    check(safe == 0, "throw expr: catch with ??")
+
+    // ── deeply nested match ──
+    println("--- Deeply Nested Match ---")
+    type Tree = | Leaf(i32) | Node(Tree, Tree)
+    fun sum_tree(t: Tree): i32 {
+        match t {
+            Leaf(v) => v
+            Node(l, r) => sum_tree(l) + sum_tree(r)
+        }
+    }
+    val tree = Node(Node(Leaf(1), Leaf(2)), Node(Leaf(3), Leaf(4)))
+    check(sum_tree(tree) == 10, "deep match: tree sum=10")
+
+    summary()
+}

@@ -1,0 +1,140 @@
+// p36_p2_batch1.frond — P2 探测：turbofish、range、local type、sci notation、char edges
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// 泛型函数用于 turbofish 测试
+fun identity<T>(x: T): T { x }
+fun first<T>(arr: T[]): T { arr[0] }
+
+pub fun main(): void {
+    println("=== P2 Batch 1 ===")
+
+    // ── turbofish 语法 (Frond 使用 f<T>(args) 而非 f::<T>(args)) ──
+    println("--- Turbofish ---")
+    val v1 = identity<i32>(42i32)
+    check(v1 == 42, "turbofish: identity<i32>(42)")
+
+    val v2 = identity<str>("hi")
+    check(v2 == "hi", "turbofish: identity<str>(\"hi\")")
+
+    // turbofish 推断数组元素类型
+    val arr1 = first<i64>([10i64, 20i64, 30i64])
+    check(arr1 == 10, "turbofish: first<i64>")
+
+    // ── range 表达式 ──
+    println("--- Range Expression ---")
+    // 基础 range (Frond range 要求 i64)
+    var sum1: i64 = 0
+    for i in 1i64..5i64 {
+        sum1 = sum1 + i
+    }
+    check(sum1 == 10, "range: 1..5 sum=10 (1+2+3+4)")
+
+    // inclusive range
+    var sum2: i64 = 0
+    for i in 1i64..=5i64 {
+        sum2 = sum2 + i
+    }
+    check(sum2 == 15, "range: 1..=5 sum=15")
+
+    // empty range
+    var count1: i64 = 0
+    for i in 5i64..3i64 {
+        count1 = count1 + 1
+    }
+    check(count1 == 0, "range: 5..3 empty")
+
+    // range with variables
+    val start = 2i64
+    val end = 6i64
+    var sum3: i64 = 0
+    for i in start..end {
+        sum3 = sum3 + i
+    }
+    check(sum3 == 14, "range: var 2..6 sum=14 (2+3+4+5)")
+
+    // ── 科学计数法 ──
+    println("--- Scientific Notation ---")
+    val d1 = 1.5e3
+    check(d1 == 1500.0, "sci: 1.5e3 = 1500.0")
+
+    val d2 = 2.0e-2
+    check(d2 == 0.02, "sci: 2.0e-2 = 0.02")
+
+    val d3 = 1e10
+    check(d3 == 10000000000.0, "sci: 1e10")
+
+    val d4 = -3.14e2
+    check(d4 == -314.0, "sci: -3.14e2 = -314.0")
+
+    // ── 字符字面量边缘 ──
+    println("--- Char Literals ---")
+    val newline = '\n'
+    check(newline == '\n', "char: newline literal")
+
+    val tab = '\t'
+    check(tab == '\t', "char: tab literal")
+
+    val quote = '\''
+    check(quote == '\'', "char: single quote escaped")
+
+    val backslash = '\\'
+    check(backslash == '\\', "char: backslash escaped")
+
+    val null_char = '\0'
+    check(null_char == '\0', "char: null char")
+
+    // char to int
+    val ch = 'A'
+    val code = ch as i32
+    check(code == 65, "char: 'A' cast to i32 = 65")
+
+    // ── 负数字面量边界 ──
+    println("--- Negative Literal Boundaries ---")
+    val min_i8: i8 = -128i8
+    check(min_i8 == -128i8, "neg: i8 min -128")
+
+    val max_i8: i8 = 127i8
+    check(max_i8 == 127i8, "neg: i8 max 127")
+
+    val min_i32: i32 = -2147483648i32
+    check(min_i32 == -2147483648i32, "neg: i32 min")
+
+    val min_i64: i64 = -9223372036854775808i64
+    check(min_i64 == -9223372036854775808i64, "neg: i64 min")
+
+    // ── 顶层局部类型声明 ──
+    println("--- Local Type Decl ---")
+    type Color = | Red | Green | Blue
+    val c: Color = Red
+    val cname = match c {
+        Red => "red"
+        Green => "green"
+        Blue => "blue"
+    }
+    check(cname == "red", "local type: Color match")
+
+    // 局部 record (Frond 使用单构造器 ADT 语法)
+    type Pt = Pt(x: i32, y: i32)
+    val p = Pt(3, 4)
+    check(p.x == 3 && p.y == 4, "local type: Pt record")
+
+    summary()
+}

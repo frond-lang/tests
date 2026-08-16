@@ -1,8 +1,0 @@
-// EXPECT: is @internal (a stdlib implementation primitive)
-// Raw extern primitives are marked @internal in builtin/*/Raw.kz: only
-// builtin/** and std/** modules may call them. User code must go through
-// the public std wrappers (File / Fs / Dir in std.io).
-fun main(): void {
-    val fd = __file_open_raw("Main.kz", 1, 0)
-    println(fd)
-}

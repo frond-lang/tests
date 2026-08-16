@@ -1,7 +1,0 @@
-[package]
-name = "match_dispatch"
-entry = "src/Main.kz"
-
-[build]
-output_dir = "out"
-opt_level = 2

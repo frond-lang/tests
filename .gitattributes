@@ -1,2 +1,2 @@
-*.kz linguist-language=Frond
-*.kz linguist-detectable=true
+*.frond linguist-language=Frond
+*.frond linguist-detectable=true

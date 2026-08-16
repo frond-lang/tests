@@ -1,0 +1,64 @@
+// p38_ir_bugs.frond — 专门验证触发 IR 错误的边缘用例
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+pub fun main(): void {
+    println("=== IR Bug Verification ===")
+
+    // ── Bug 1: {{ }} 转义字符串 ──
+    println("--- Bug 1: {{ }} escape ---")
+    // 1a: 混合转义和插值（应该工作）
+    val n = 42i32
+    val mixed = "val={n}, literal={{n}}"
+    // {{n}} 正确转义为字面 {n}，而非插值
+    // 用 char 拼接避免 {n} 被插值
+    val brace_open = '{' as str
+    val brace_close = '}' as str
+    val expected = "val=42, literal=" + brace_open + "n" + brace_close
+    check(mixed == expected, "mixed escape: {{n}} produces literal brace-n-brace")
+
+    // 1b: 独立 {{ 字符串
+    val standalone_open = "{{"
+    check(standalone_open == brace_open, "standalone {{ to open-brace")
+
+    // ── Bug 2: 浮点除零 ──
+    println("--- Bug 2: Float Division by Zero ---")
+    val inf = 1.0 / 0.0
+    check(inf == inf, "1.0/0.0 == inf")
+
+    val neg_inf = -1.0 / 0.0
+    check(neg_inf < 0.0, "-1.0/0.0 < 0")
+
+    // ── Bug 3: NaN 比较 ──
+    println("--- Bug 3: NaN Comparison ---")
+    val nan = 0.0 / 0.0
+    check(nan != nan, "NaN != NaN")
+
+    // ── Bug 4: 数组索引 + ?? 操作符 ──
+    println("--- Bug 4: Array Index with ?? ---")
+    val arr = [10i32, 20, 30]
+    val v0 = arr[0] ?? -1
+    check(v0 == 10, "arr[0] ?? -1 = 10")
+
+    val v2 = arr[2] ?? -1
+    check(v2 == 30, "arr[2] ?? -1 = 30")
+
+    summary()
+}

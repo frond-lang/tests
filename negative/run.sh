@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 负向编译测试 runner：cases/*.kz 必须编译失败且诊断包含 // EXPECT: 子串。
+# 负向编译测试 runner：cases/*.frond 必须编译失败且诊断包含 // EXPECT: 子串。
 set -u
 cd "$(dirname "$0")"
 
@@ -15,19 +15,19 @@ fi
 
 tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT
-printf '[package]\nname = "neg"\nentry = "src/Main.kz"\n\n[build]\noutput_dir = "out"\nopt_level = 2\n' > "$tmp/frond.toml"
+printf '[package]\nname = "neg"\nentry = "src/Main.frond"\n\n[build]\noutput_dir = "out"\nopt_level = 2\n' > "$tmp/Root.toml"
 mkdir -p "$tmp/src"
 
 pass=0
 fail=0
-for case_file in cases/*.kz; do
-    name="$(basename "$case_file" .kz)"
+for case_file in cases/*.frond; do
+    name="$(basename "$case_file" .frond)"
     expect="$(sed -n 's|^// EXPECT: ||p' "$case_file" | head -1)"
     if [ -z "$expect" ]; then
         echo "SKIP: $name (no // EXPECT: line)"
         continue
     fi
-    cp "$case_file" "$tmp/src/Main.kz"
+    cp "$case_file" "$tmp/src/Main.frond"
     out="$(cd "$tmp" && timeout 60 "$FROND" run 2>&1)"
     ec=$?
     if [ $ec -eq 0 ]; then

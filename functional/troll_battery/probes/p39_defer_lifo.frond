@@ -1,0 +1,95 @@
+// p39_defer_lifo.frond — 专门验证 defer LIFO 顺序
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+pub fun main(): void {
+    println("=== Defer LIFO Verification ===")
+
+    // ── Test 1: 基本 defer LIFO ──
+    println("--- Test 1: Basic Defer LIFO ---")
+    fun test1(): void {
+        var log = ""
+        defer log = log + "A"
+        defer log = log + "B"
+        defer log = log + "C"
+        log = log + "body|"
+        println("  test1 log = '{log}'")
+    }
+    test1()
+    // 预期: LIFO → body|CBA
+
+    // ── Test 2: defer in loop ──
+    println("--- Test 2: Defer in Loop ---")
+    fun test2(): void {
+        var log = ""
+        for i in 1i64..4i64 {
+            defer log = log + "{i}"
+        }
+        println("  test2 log = '{log}'")
+        // 预期 LIFO: 321
+        // 如果 FIFO: 123
+        check(log == "321", "defer in loop: LIFO order (321)")
+    }
+    test2()
+
+    // ── Test 3: defer in nested block ──
+    println("--- Test 3: Defer in Nested Block ---")
+    fun test3(): void {
+        var log = ""
+        defer log = log + "outer"
+        {
+            defer log = log + "inner1"
+            defer log = log + "inner2"
+            log = log + "block|"
+        }
+        log = log + "|after-block"
+        println("  test3 log = '{log}'")
+        // 预期: block|inner2inner1|after-blockouter
+    }
+    test3()
+
+    // ── Test 4: defer with mutable capture ──
+    println("--- Test 4: Defer Mutable Capture ---")
+    fun test4(): void {
+        var x = 0i32
+        defer x = 99
+        x = 10
+        println("  test4: x={x} before return (expect 10)")
+        check(x == 10, "defer: x is 10 before return")
+        // defer fires after function body, x becomes 99
+    }
+    test4()
+
+    // ── Test 5: multiple defers modifying same var ──
+    println("--- Test 5: Multiple Defers Same Var ---")
+    fun test5(): void {
+        var v = 0i32
+        defer v = v + 10
+        defer v = v + 20
+        defer v = v + 30
+        v = 1
+        println("  test5: v={v} before return (expect 1)")
+        // LIFO: v = 1, then +30 = 31, then +20 = 51, then +10 = 61
+        check(v == 1, "defer: v is 1 before return")
+    }
+    test5()
+
+    summary()
+}
