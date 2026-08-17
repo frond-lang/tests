@@ -19,7 +19,7 @@ fun check(cond: bool, name: str): void {
 fun check_err(result: Throw<void, IOError>, name: str): void {
     match result {
         Ok(_) => check(true, name),
-        Err(e) => check(false, "{name} ({e.msg})"),
+        Err(e) => check(false, "{name} ({e.message})"),
     }
 }
 
@@ -34,19 +34,19 @@ fun summary(): void {
 
 fun exists_checks(): void {
     println("-- exists --")
-    val yes = match Fs.exists("src/Main.frond").await() {
+    val yes = match Fs.exists(Path.from("src/Main.frond")).await() {
         Ok(v) => v,
-        Err(e) => { check(false, "exists source ({e.msg})"); return }
+        Err(e) => { check(false, "exists source ({e.message})"); return }
     }
     check(yes, "exists: source file")
 
-    val no = match Fs.exists("definitely_missing_frond_xyz.frond").await() {
+    val no = match Fs.exists(Path.from("definitely_missing_frond_xyz.frond")).await() {
         Ok(v) => v,
-        Err(e) => { check(false, "exists missing ({e.msg})"); return }
+        Err(e) => { check(false, "exists missing ({e.message})"); return }
     }
     check(no == false, "exists: missing file -> false")
 
-    val dir_yes = match Fs.exists(".").await() {
+    val dir_yes = match Fs.exists(Path.from(".")).await() {
         Ok(v) => v,
         Err(_) => false,
     }
@@ -56,55 +56,55 @@ fun exists_checks(): void {
 fun copy_checks(): void {
     println("-- copy_file --")
     // 准备源文件
-    match Fs.write_file("fs_test_src.txt", "copy-me").await() {
+    match Fs.write_file(Path.from("fs_test_src.txt"), "copy-me").await() {
         Ok(_) => {},
-        Err(e) => { check(false, "copy: write source ({e.msg})"); return }
+        Err(e) => { check(false, "copy: write source ({e.message})"); return }
     }
 
-    check_err(Fs.copy_file("fs_test_src.txt", "fs_test_dst.txt").await(), "copy_file basic")
+    check_err(Fs.copy_file(Path.from("fs_test_src.txt"), "fs_test_dst.txt").await(), "copy_file basic")
 
     // NOTE: `match` on an awaited Throw with an early-return Err arm trips an
     // engine match-dispatch bug (tracked); the `?` form is verified working.
-    val back = Fs.read_file("fs_test_dst.txt").await()?
+    val back = Fs.read_file(Path.from("fs_test_dst.txt")).await()?
     check(back == "copy-me", "copy_file content identical")
 
     // 覆盖语义：先改目标内容，再 copy 覆盖
-    val _ = Fs.write_file("fs_test_dst.txt", "stale").await()
-    check_err(Fs.copy_file("fs_test_src.txt", "fs_test_dst.txt").await(), "copy_file overwrite")
-    val back2 = Fs.read_file("fs_test_dst.txt").await()?
+    val _ = Fs.write_file(Path.from("fs_test_dst.txt"), "stale").await()
+    check_err(Fs.copy_file(Path.from("fs_test_src.txt"), "fs_test_dst.txt").await(), "copy_file overwrite")
+    val back2 = Fs.read_file(Path.from("fs_test_dst.txt")).await()?
     check(back2 == "copy-me", "copy_file overwrite content")
 
     // 大小一致性（经 stat）
-    val st = File.stat_of("fs_test_dst.txt").await()?
+    val st = File.stat_of(Path.from("fs_test_dst.txt")).await()?
     check(st.size == 7u64, "copy_file size matches ({st.size})")
 
     // 复制不存在文件 -> Err
-    match Fs.copy_file("definitely_missing_frond_xyz.frond", "fs_test_dst.txt").await() {
+    match Fs.copy_file(Path.from("definitely_missing_frond_xyz.frond"), "fs_test_dst.txt").await() {
         Ok(_) => check(false, "copy missing should fail"),
         Err(_) => check(true, "copy_file missing source -> Err"),
     }
     // File.remove is the semantic cleanup path (the name-clash incident's
     // original symptom: this call used to silently bind Env.remove and
     // delete nothing).
-    File.remove("fs_test_src.txt").await()?
-    File.remove("fs_test_dst.txt").await()?
+    File.remove(Path.from("fs_test_src.txt")).await()?
+    File.remove(Path.from("fs_test_dst.txt")).await()?
 }
 
 fun chmod_checks(): void {
     println("-- chmod --")
-    Fs.write_file("fs_test_mode.txt", "x").await()?
-    Fs.chmod("fs_test_mode.txt", 0o444).await()?
-    Fs.chmod("fs_test_mode.txt", 0o644).await()?
+    Fs.write_file(Path.from("fs_test_mode.txt"), "x").await()?
+    Fs.chmod(Path.from("fs_test_mode.txt"), 0o444).await()?
+    Fs.chmod(Path.from("fs_test_mode.txt"), 0o644).await()?
     check(true, "chmod roundtrip (inline)")
     // File.chmod and Fs.chmod are same-named functions in different modules:
     // both must compile and both must reach their own body.
-    match File.chmod("fs_test_mode.txt", 0o444).await() {
+    match File.chmod(Path.from("fs_test_mode.txt"), 0o444).await() {
         Ok(_) => check(true, "File.chmod roundtrip"),
-        Err(e) => check(false, "File.chmod roundtrip ({e.msg})"),
+        Err(e) => check(false, "File.chmod roundtrip ({e.message})"),
     }
-    File.chmod("fs_test_mode.txt", 0o644).await()?
-    check_err(Fs.write_file("fs_test_mode.txt", "y").await(), "writable after restore")
-    File.remove("fs_test_mode.txt").await()?
+    File.chmod(Path.from("fs_test_mode.txt"), 0o644).await()?
+    check_err(Fs.write_file(Path.from("fs_test_mode.txt"), "y").await(), "writable after restore")
+    File.remove(Path.from("fs_test_mode.txt")).await()?
 }
 
 // Side-effect assertions: effectful APIs must be verified by the WORLD-STATE
@@ -114,7 +114,7 @@ fun chmod_checks(): void {
 // World-state probe via the public API (raw @internal primitives are no
 // longer callable outside stdlib): Err counts as "missing".
 fun fs_path_exists(path: str): bool {
-    match Fs.exists(path).await() {
+    match Fs.exists(Path.from(path)).await() {
         Ok(b) => b,
         Err(_) => false,
     }
@@ -122,43 +122,163 @@ fun fs_path_exists(path: str): bool {
 
 fun remove_rename_checks(): void {
     println("-- remove / rename side effects --")
-    Fs.write_file("fs_rm.txt", "x").await()?
-    val r = File.remove("fs_rm.txt").await()
+    Fs.write_file(Path.from("fs_rm.txt"), "x").await()?
+    val r = File.remove(Path.from("fs_rm.txt")).await()
     match r {
         Ok(_) => {
             check(fs_path_exists("fs_rm.txt") == false, "File.remove: file actually deleted")
         },
-        Err(e) => check(false, "File.remove returned Err ({e.msg})"),
+        Err(e) => check(false, "File.remove returned Err ({e.message})"),
     }
 
-    Fs.write_file("fs_mv_src.txt", "payload").await()?
-    match File.rename("fs_mv_src.txt", "fs_mv_dst.txt").await() {
+    Fs.write_file(Path.from("fs_mv_src.txt"), "payload").await()?
+    match File.rename(Path.from("fs_mv_src.txt"), Path.from("fs_mv_dst.txt")).await() {
         Ok(_) => {
             check(fs_path_exists("fs_mv_src.txt") == false, "File.rename: source actually gone")
             check(fs_path_exists("fs_mv_dst.txt") == true, "File.rename: destination actually exists")
         },
-        Err(e) => check(false, "File.rename returned Err ({e.msg})"),
+        Err(e) => check(false, "File.rename returned Err ({e.message})"),
     }
-    File.remove("fs_mv_dst.txt").await()?
+    File.remove(Path.from("fs_mv_dst.txt")).await()?
 
     // Selective import alias: `delete_file` must bind std.io.File.remove
     // (the IR-side alias plumbing) and delete the file.
-    Fs.write_file("fs_alias.txt", "x").await()?
-    match delete_file("fs_alias.txt").await() {
+    Fs.write_file(Path.from("fs_alias.txt"), "x").await()?
+    match delete_file(Path.from("fs_alias.txt")).await() {
         Ok(_) => check(fs_path_exists("fs_alias.txt") == false, "import alias: File.remove actually deleted"),
-        Err(e) => check(false, "import alias remove returned Err ({e.msg})"),
+        Err(e) => check(false, "import alias remove returned Err ({e.message})"),
     }
 }
 
 fun dir_checks(): void {
     println("-- Dir.list --")
-    val entries = Dir.list(".").await()?
+    val entries = Dir.list(Path.from(".")).await()?
     check(entries.len() > 0, "Dir.list non-empty")
     var found_src = false
     for e in entries.iter() {
         if e.name == "Root.toml" && e.kind == FileKind.File { found_src = true }
     }
     check(found_src, "Dir.list finds Root.toml (File kind)")
+}
+
+
+// ── 用户侧递归:目录树创建与递归删除(_all 变体已从 std 移除)──
+// 证明 list/join_str/remove 原语足以表达 mkdir -p 与 rm -r 语义。
+
+// 逐级建目录(用户版 mkdir -p):沿 parent 链收集缺失祖先,自顶向下创建
+async fun user_create_all(path: Path): Async<Throw<void, IOError>> {
+    val missing: Path[] = []
+    var cur: Path? = path
+    var done = false
+    while !done {
+        match cur {
+            null => { done = true },
+            c => {
+                if c.to_str() == "" {
+                    done = true
+                } else {
+                    match Fs.exists(c).await() {
+                        Ok(true) => { done = true },
+                        _ => {
+                            missing = missing ++ [c]
+                            cur = c.parent()
+                        },
+                    }
+                }
+            },
+        }
+    }
+    // missing 自底向上,倒序创建(先父后子)
+    var i = missing.len()
+    while i > 0 {
+        i = i - 1
+        Dir.create(missing[i]).await()?
+    }
+    Ok(void)
+}
+
+fun user_recursion_checks(): void {
+    // 建树 a/b/c + 文件,再整体删
+    val root = Path.from("fs_user_tree")
+    match user_create_all(root.join_str("a/b/c")).await() {
+        Ok(_) => {},
+        Err(e) => check(false, "user_create_all ({e.message})"),
+    }
+    Fs.write_file(root.join_str("a/b/c/leaf.txt"), "x").await()?
+    match Fs.exists(root.join_str("a/b/c/leaf.txt")).await() {
+        Ok(b) => check(b, "user_create_all built nested tree"),
+        Err(e) => check(false, "exists leaf ({e.message})"),
+    }
+    match user_remove_all(root).await() {
+        Ok(_) => {},
+        Err(e) => check(false, "user_remove_all ({e.message})"),
+    }
+    match Fs.exists(root).await() {
+        Ok(b) => check(b == false, "user_remove_all removed the tree"),
+        Err(e) => check(false, "exists root ({e.message})"),
+    }
+}
+
+// 显式栈遍历(不用 async 递归——引擎当前 async 递归函数会挂起,另案):
+// 先删所有文件,目录按发现序倒序(自底向上)删除。
+async fun user_remove_all(path: Path): Async<Throw<void, IOError>> {
+    val dirs: Path[] = []
+    var queue: Path[] = [path]
+    while queue.len() > 0 {
+        val cur = queue[queue.len() - 1]
+        queue = queue[0..queue.len() - 1]
+        dirs = dirs ++ [cur]
+        match Dir.list(cur).await() {
+            Ok(entries) => {
+                for e in entries.iter() {
+                    val child = cur.join_str(e.name)
+                    match e.kind {
+                        Directory => { queue = queue ++ [child] },
+                        _ => { File.remove(child).await()? },
+                    }
+                }
+            },
+            Err(e) => throw e,
+        }
+    }
+    var i = dirs.len()
+    while i > 0 {
+        i = i - 1
+        Dir.remove(dirs[i]).await()?
+    }
+    Ok(void)
+}
+
+fun realpath_checks(): void {
+    println("== Fs.realpath ==")
+    // happy path: resolve a real relative file to an absolute path
+    match Fs.realpath(Path.from("Root.toml")).await() {
+        Ok(p) => {
+            val s = p.to_str()
+            check(p.is_absolute_path(), "realpath absolute")
+            check(s.len() > "Root.toml".len(), "realpath longer than input")
+            check(s.contains("Root.toml"), "realpath keeps filename")
+            // idempotent: realpath(realpath(x)) == realpath(x)
+            match Fs.realpath(p).await() {
+                Ok(p2) => check(p2.to_str() == s, "realpath idempotent"),
+                Err(e) => check(false, "realpath idempotent ({e.message})"),
+            }
+        },
+        Err(e) => check(false, "realpath Root.toml ({e.message})"),
+    }
+    // ../ resolution: src/../Root.toml is this project file
+    match Fs.realpath(Path.from("src/../Root.toml")).await() {
+        Ok(p) => match Fs.realpath(Path.from("Root.toml")).await() {
+            Ok(q) => check(p.to_str() == q.to_str(), "realpath collapses ../"),
+            Err(_) => check(false, "realpath collapses ../"),
+        },
+        Err(e) => check(false, "realpath collapses ../ ({e.message})"),
+    }
+    // missing path component -> Err
+    match Fs.realpath(Path.from("no_such_dir/no_such_file.txt")).await() {
+        Ok(_) => check(false, "realpath missing -> Err"),
+        Err(_) => check(true, "realpath missing -> Err"),
+    }
 }
 
 fun main(): void {
@@ -168,5 +288,7 @@ fun main(): void {
     chmod_checks()
     remove_rename_checks()
     dir_checks()
+    user_recursion_checks()
+    realpath_checks()
     summary()
 }

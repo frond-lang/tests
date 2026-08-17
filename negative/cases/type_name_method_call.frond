@@ -1,0 +1,11 @@
+// EXPECT: method 'Counter.probe' cannot be called through the type name
+pub type Counter = Counter(n: i32) {
+    pub fun probe(v: i32): i32 { v }
+}
+
+fun main(): void {
+    // Type methods carry an implicit `this` at param slot 0; the type-name
+    // call site passes no receiver, so arguments would shift one slot left
+    // (historically silent garbage — now a compile error).
+    println(Counter.probe(7))
+}

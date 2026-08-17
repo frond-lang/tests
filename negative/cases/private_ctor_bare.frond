@@ -1,0 +1,9 @@
+// EXPECT: constructor 'Instant.Instant' has private fields
+import std.time.Instant
+
+fun main(): void {
+    // Bare (unqualified) constructor call: the ctor gate must also catch this
+    // form when the defining module differs from the caller's module.
+    val t = Instant(0i128)
+    println(t.elapsed().as_secs())
+}

@@ -1,0 +1,11 @@
+// EXPECT: 'return' value must be Throw-wrapped
+type E = | E(str)
+
+fun leak(): Throw<i64, E> {
+    if true { return 42 }
+    Ok(0)
+}
+
+fun main(): void {
+    println("unreachable")
+}

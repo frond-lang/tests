@@ -1,0 +1,7 @@
+// EXPECT: constructor 'Instant.Instant' has private fields
+import std.time.Instant
+
+fun main(): void {
+    val t = Instant.Instant(0i128)
+    println(t.elapsed().as_secs())
+}

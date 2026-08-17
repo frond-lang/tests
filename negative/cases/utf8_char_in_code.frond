@@ -1,0 +1,8 @@
+// A multi-byte UTF-8 character in code position (outside string/char literals) must
+// produce a clean diagnostic, never the old char-boundary slice panic in the lexer's
+// unknown-character fallback (`end byte index ... is not a char boundary`).
+// The whole UTF-8 sequence is consumed into one Err token so the lexeme is valid.
+// EXPECT: unexpected character '注'
+fun main(): void {
+    val a = 注释
+}

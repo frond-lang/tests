@@ -1,0 +1,8 @@
+// `val`/`var` start declarations; they are statements, not expressions, so a braceless
+// if/loop body cannot be a val binding. Regression: the parser used to accept `val` as
+// a plain identifier here and the failure moved to sema as "undefined variable 'val'".
+// (`channel` stays an identifier in expression position: it is a constructor-style callee.)
+// EXPECT: 'val' starts a declaration
+fun main(): void {
+    if true val x = 1
+}

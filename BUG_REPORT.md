@@ -2182,6 +2182,33 @@
 
 ---
 
+## Bug #102:match 臂内自递归走分支帧复制路径,值表重叠覆写调用方槽(2026-08-17 std.json 发现,同日已修)
+
+- **症状**(std.json __fmt 序列化器三变体):
+  1. `while i < len` + `arr[i]` 索引 + 同循环体内递归 → 活锁(引擎节点无限克隆,FROND_DEBUG_STALL dump 27万行);
+  2. for-in + 同循环字段读 + 递归 → 数据损坏(嵌套帧的 key/value 泄漏到外层帧的后续读取,如 `{"list":...}` 输出成 `{"deep":...}`);
+  3. 两趟拆分(先拷字段后递归)+ 模式解构替代 pub 字段访问器 → 仍损坏(str[] 局部数组在递归调用返回后被被调帧数据覆写)。
+- **最小触发**(stdlib 内(std/json 的 Format/Parse),用户代码同形未复现):
+  match 臂内循环遍历 match 绑定数组,循环体读元素/字段并递归回同 pack 函数,递归返回后继续读局部累积数组。
+- **实验矩阵**: 常量递归实参=通过(B);字段读绑局部再传=挂(C);for-in=损坏(D);两趟+解构=损坏;尾递归索引 walker(无局部数组、返回后零读取)=**正确**(现行 std.json 形态)。
+- **定位方向**: 数组 `++` 分配的存储槽未按帧隔离(对照 loop-val-slot-aliasing 的数组兄弟);FROND_DUMP_IR 对照 B/C 两版 __fmt 可锁定写读槽对。
+- **现行规避**: std/json/Format.frond 序列化走 `__fmt_items/__fmt_entries` 尾递归参数穿线;json 套件 "format three objects"/"format doc3 exact" 为回归锚。修复后可回归普通循环形态。
+- **连带发现(已修)**: 词法器 `uXXXX` 转义未验码点范围,原生代理区字面量 ICE(scan_string/scan_char 已补 char::from_u32 校验)。
+
+- **根因(2026-08-17 同日定位并修复)**:全部症状的真判别式=**自递归调用点位于 match/if 臂子图内**。`start_subgraph_frame` 的 `same_function` 判定(Engine/Subgraph.rs)只挡了 body-vs-body 直接自递归(`subgraph_id != parent_frame.subgraph_id`),臂帧(arm sg)→函数体 sg(body sg)的递归调用漏网:function_id 相同且 id 不等 → 误走"同函数分支复制"路径 → child 帧 node_offset=父帧、值表与 caller 完全重叠 → 递归帧覆写调用方槽 → 返回后 caller 读到 callee 现场(数据损坏)或循环簿记失步(活锁)。此前"委托尾递归函数"的规避恰好绕开(跨函数调用走正常新帧);用户侧复现失败因复现代码的递归点全是委托形态。
+- **修复**:`same_function` 追加 `subgraph_id.0 != child_sg.function_id`(函数体子图 id==function_id,永远是调用目标,必须走跨函数新帧)。
+- **回归**:std/json Format.frond 已回归朴素循环形态(match 臂内 while+if+字段读+自递归);json 套件 "format three objects"/"format doc3 exact" 为锚。全量 60+43+19 绿。
+
+## Bug #103:Path 0 方法糖不校验候选(接收者/元数),同名 std 函数被强推(2026-08-17 repr 改名暴露,同日已修)
+
+- **复现**:`val x = 42` + `x.format()`(Reflect.format 已改名 repr 后)——编译静默通过,运行时 `non-exhaustive match` panic。
+- **链路**:CallInfer Path 0(`recv.method(args)` 是 `method(recv, args)` 的糖)env 查找命中**未 import** 的 std/json `Format.format`(stdlib 全量载入全局 env);`unify_or_constrain(params[0]=Json, recv=i32)` 失败只登记约束、不报错("sema 约束不硬化"已知族);返回 str 编译成 `Format.format(i32)`,运行时 match 无臂 panic。对照组 `x.nosuch()` 走到兜底报 `no method 'nosuch' on type 'i32'` ✓(兜底本身是好的)。
+- **对照**:`x.repr()`(改名后)正常;`x.nosuch()` 干净报错;仅"名字恰与某 std 模块函数重合"的接收者踩洞。
+- **修复方向**:Path 0 的 lookup_with_pred 应尊重 import 可见性(Fn 绑定需带定义模块标记);或 params[0] 与具体类型 recv 的 unify 硬失败改报错——**注意**后者可能波及 `.iter()` 族多载合法形态(str.iter() 依赖软路径),需先核。
+- **背景**:2026-08-17 Reflect.format 改名 repr()(用户裁决:format 通用词让给领域 API;repr=Python 先例、语义=调试表示)时暴露。改名本体已完成(Reflect/Console/Monomorph/Helpers/Builder 映射+reflect 套件)。
+
+- **修复(2026-08-17 同日)**:CallInfer Path 0 加候选门——arity 须等于 args+1;params[0] 与接收者 `arena.unify` 硬失败且两侧全具体(`type_contains_typevar` 深度扫描无 TypeVar,`T[]` 元素级变量保持宽容,`"abc".iter()` 不受影响)即拒绝候选落穿到兜底报 `no method`。负向锁定 method_sugar_bad_candidate(x.format() on i32)。可见性本身非 bug(裸名唯一直连/歧义报错是设计)。
+
 ## 修复检查清单
 
 每修复一个 bug，请：

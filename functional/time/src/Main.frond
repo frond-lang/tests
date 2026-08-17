@@ -1,0 +1,106 @@
+// 功能验证:std.time —— DateTime format/to_iso8601/parse、Duration、
+// SystemTime/add_duration/add_days。parse 同时是槽别名修复的回归锚
+// (2026-08-17 之前 parse 因"函数内调用后变量绑定错位"被整体禁用)。
+import std.time.DateTime
+import std.time.Duration
+import std.time.SystemTime
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+
+// parse 成功且各字段符合预期
+fun check_parse_ok(s: str, year: i32, month: u8, day: u8, hour: u8, minute: u8, second: u8, nanos: u32, name: str): void {
+    match DateTime.parse(s) {
+        Ok(dt) => check(
+            dt.year == year && dt.month == month && dt.day == day &&
+            dt.hour == hour && dt.minute == minute && dt.second == second && dt.nanos == nanos,
+            name),
+        Err(e) => check(false, name + " (err: {e.message})"),
+    }
+}
+
+fun check_parse_err(s: str, name: str): void {
+    match DateTime.parse(s) {
+        Ok(_) => check(false, name),
+        Err(_) => check(true, name),
+    }
+}
+
+fun main(): void {
+    println("== DateTime.parse ==")
+    check_parse_ok("2024-06-15T10:30:45", 2024, 6, 15, 10, 30, 45, 0, "basic T form")
+    check_parse_ok("2024-06-15t10:30:45", 2024, 6, 15, 10, 30, 45, 0, "lowercase t")
+    check_parse_ok("2024-06-15 10:30:45", 2024, 6, 15, 10, 30, 45, 0, "space separator")
+    check_parse_ok("2024-06-15T10:30:45Z", 2024, 6, 15, 10, 30, 45, 0, "Z marker")
+    check_parse_ok("2024-06-15T10:30:45z", 2024, 6, 15, 10, 30, 45, 0, "lowercase z")
+    check_parse_ok("2024-06-15T10:30:45.5", 2024, 6, 15, 10, 30, 45, 500000000, "frac 1 digit")
+    check_parse_ok("2024-06-15T10:30:45.123456789", 2024, 6, 15, 10, 30, 45, 123456789, "frac 9 digits")
+    check_parse_ok("2024-06-15T10:30:45.123456789123", 2024, 6, 15, 10, 30, 45, 123456789, "frac beyond 9 truncated")
+    check_parse_ok("1970-01-01T00:00:00", 1970, 1, 1, 0, 0, 0, 0, "epoch boundary")
+    // derived fields: 2024-06-15 is Saturday (weekday 6), day 167 of leap year
+    match DateTime.parse("2024-06-15T10:30:45") {
+        Ok(dt) => check(dt.weekday == 6 && dt.day_of_year == 167, "derived weekday/doy filled by roundtrip"),
+        Err(_) => check(false, "derived weekday/doy filled by roundtrip"),
+    }
+    // roundtrip with to_iso8601
+    match DateTime.parse("2031-02-28T23:59:59") {
+        Ok(dt) => check(dt.to_iso8601() == "2031-02-28T23:59:59", "parse -> to_iso8601 roundtrip"),
+        Err(_) => check(false, "parse -> to_iso8601 roundtrip"),
+    }
+    // negative: syntax
+    check_parse_err("", "empty -> err")
+    check_parse_err("bogus", "junk -> err")
+    check_parse_err("2024-6-15T10:30:45", "single-digit month -> err")
+    check_parse_err("2024-06-15X10:30:45", "bad separator -> err")
+    check_parse_err("2024-06-15T10:30", "too short time -> err")
+    check_parse_err("2024-06-15T10:30:45.", "dangling fraction point -> err")
+    check_parse_err("2024-06-15T10:30:45+01:00", "numeric offset unsupported -> err")
+    check_parse_err("2024-06-15T10:30:45Zx", "trailing junk after Z -> err")
+    // negative: semantics (via components_to_ns_utc)
+    check_parse_err("2024-13-01T00:00:00", "month 13 -> err")
+    check_parse_err("2024-02-30T00:00:00", "feb 30 -> err")
+    check_parse_err("2023-02-29T00:00:00", "feb 29 non-leap -> err")
+    check_parse_err("2024-06-15T24:00:00", "hour 24 -> err")
+    check_parse_err("1969-12-31T23:59:59", "pre-1970 -> err")
+
+    println("== DateTime.format / to_iso8601 ==")
+    val dt = DateTime.parse("2024-06-15T09:08:07") ?? DateTime(2024, 6, 15, 9, 8, 7, 0, 6, 167)
+    check(dt.format("%Y-%m-%d") == "2024-06-15", "format date")
+    check(dt.format("%H:%M:%S") == "09:08:07", "format zero-padded time")
+    check(dt.format("%A %B %d") == "Saturday June 15", "format names")
+    check(dt.format("%j day %%") == "167 day %", "format doy and literal percent")
+
+    println("== DateTime arithmetic ==")
+    val d1 = dt.add_days(1)
+    check(d1.year == 2024 && d1.month == 6 && d1.day == 16 && d1.weekday == 0, "add_days 1 (Sunday)")
+    val d2 = dt.add_days(-15)
+    check(d2.month == 5 && d2.day == 31, "add_days negative across month")
+    match dt.add_duration(Duration.from_hours(25)) {
+        Ok(next) => check(next.day == 16 && next.hour == 10, "add_duration 25h"),
+        Err(_) => check(false, "add_duration 25h"),
+    }
+
+    println("== SystemTime ==")
+    val t1 = SystemTime.now()
+    val later = SystemTime.now()
+    val d = later.duration_since(t1)
+    check(d.as_nanos() >= 0, "duration_since(later - earlier) non-negative")
+    match SystemTime.from_datetime_utc(DateTime(2024, 1, 1, 0, 0, 0, 0, 1, 1)) {
+        Ok(t) => {
+            val dt2 = t.to_utc()
+            check(dt2.year == 2024 && dt2.month == 1 && dt2.day == 1, "from_datetime_utc roundtrip")
+        },
+        Err(_) => check(false, "from_datetime_utc roundtrip"),
+    }
+
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

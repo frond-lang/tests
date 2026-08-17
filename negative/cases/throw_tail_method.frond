@@ -1,0 +1,10 @@
+// EXPECT: sync functions do not auto-wrap
+type E = | E(str)
+
+type Box = Box(v: i64) {
+    fun leak(): Throw<i64, E> { v }
+}
+
+fun main(): void {
+    println("unreachable")
+}

@@ -1,0 +1,263 @@
+// 功能验证:std.os P0 批次 — Proc.args / Proc.run / Env.vars / Info 目录用户三件套
+// + std.io.Path 联动变体(tmp_dir_path / home_dir_path)。
+// 子进程与目录断言按宿主平台分支(os_name),Windows/POSIX 同一套件可跑。
+import std.os.Proc
+import std.os.Env
+import std.os.Info
+import std.os.Os
+import std.io.Path
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}
+
+fun main(): void {
+    val on_windows = Info.os_name() == "windows"
+
+    // ── Proc.args:套件由 runner 以无参 `frond run` 启动 ──────────
+    check(Proc.args().len() == 0, "args empty without cli passthrough")
+
+    // ── Proc.run:非 shell 子进程 ─────────────────────────────────
+    // 退出码传播(平台各自的 true 程序,0/3 两档)
+    if on_windows {
+        match Proc.run("cmd", ["/c", "exit", "3"]) {
+            Ok(c) => check(c == 3, "run exit code 3 (cmd)"),
+            Err(e) => check(false, "run exit 3 ({e.message})"),
+        }
+        match Proc.run("cmd", ["/c", "exit", "0"]) {
+            Ok(c) => check(c == 0, "run exit code 0 (cmd)"),
+            Err(e) => check(false, "run exit 0 ({e.message})"),
+        }
+    } else {
+        match Proc.run("/bin/sh", ["-c", "exit 3"]) {
+            Ok(c) => check(c == 3, "run exit code 3 (sh)"),
+            Err(e) => check(false, "run exit 3 ({e.message})"),
+        }
+        match Proc.run("/bin/sh", ["-c", "exit 0"]) {
+            Ok(c) => check(c == 0, "run exit code 0 (sh)"),
+            Err(e) => check(false, "run exit 0 ({e.message})"),
+        }
+    }
+    // 参数原样透传(含空格,不经 shell 不需转义)
+    if on_windows {
+        match Proc.run("cmd", ["/c", "echo", "a b", "c"]) {
+            Ok(c) => check(c == 0, "run args with spaces verbatim"),
+            Err(e) => check(false, "run spaced args ({e.message})"),
+        }
+    } else {
+        match Proc.run("/bin/echo", ["a b", "c"]) {
+            Ok(c) => check(c == 0, "run args with spaces verbatim"),
+            Err(e) => check(false, "run spaced args ({e.message})"),
+        }
+    }
+    // 不存在的程序 → 温和 Err(曾是需要修的崩溃族邻域)
+    match Proc.run("definitely_not_a_program_xyz", []) {
+        Ok(c) => check(false, "run missing program unexpectedly ok"),
+        Err(e) => check(e.message.len() > 0, "run missing program yields Err"),
+    }
+
+    // ── Env.vars ────────────────────────────────────────────────
+    check(Env.vars().len() > 0, "vars non-empty")
+
+    // ── Info 三件套(目录类直接返回 Path)─────────────────────
+    check(Info.tmp_dir().to_str().len() > 0, "tmp_dir Path non-empty")
+    check(Info.tmp_dir().is_absolute_path(), "tmp_dir Path absolute")
+    match Info.home_dir() {
+        Ok(h) => check(h.to_str().len() > 0, "home_dir Path non-empty"),
+        Err(e) => check(false, "home_dir ({e.message})"),
+    }
+    match Info.user_name() {
+        Ok(u) => check(u.len() > 0, "user_name non-empty"),
+        Err(e) => check(false, "user_name ({e.message})"),
+    }
+
+    // ── os 目录 API 返回 Path ───────────────────────────────────
+    match Os.current_dir() {
+        Ok(p) => check(p.is_absolute_path(), "Os.current_dir Path absolute"),
+        Err(e) => check(false, "Os.current_dir ({e.message})"),
+    }
+
+    // ── Proc.spawn / Process.pid / Process.wait(P1 非阻塞启动)──
+    if on_windows {
+        match Proc.spawn("cmd", ["/c", "exit", "5"]) {
+            Ok(p) => {
+                check(p.pid() > 0, "spawn pid positive")
+                match p.wait() {
+                    Ok(c) => check(c == 5, "Process.wait exit code 5 (cmd)"),
+                    Err(e) => check(false, "Process.wait ({e.message})"),
+                }
+            },
+            Err(e) => check(false, "spawn cmd ({e.message})"),
+        }
+    } else {
+        match Proc.spawn("sh", ["-c", "exit 5"]) {
+            Ok(p) => {
+                check(p.pid() > 0, "spawn pid positive")
+                match p.wait() {
+                    Ok(c) => check(c == 5, "Process.wait exit code 5 (sh)"),
+                    Err(e) => check(false, "Process.wait ({e.message})"),
+                }
+            },
+            Err(e) => check(false, "spawn sh ({e.message})"),
+        }
+    }
+
+    // ── Proc.capture:合并捕获 stdout+stderr + 退出码 ────────────
+    if on_windows {
+        match Proc.capture("cmd", ["/c", "echo", "hello"]) {
+            Ok(o) => check(o.exit_code == 0 && o.output.len() == 7, "capture echo hello (7 bytes: hello CRLF)"),
+            Err(e) => check(false, "capture echo ({e.message})"),
+        }
+        match Proc.capture("cmd", ["/c", "exit", "7"]) {
+            Ok(o) => check(o.exit_code == 7 && o.output.len() == 0, "capture exit 7, empty output"),
+            Err(e) => check(false, "capture exit ({e.message})"),
+        }
+    } else {
+        match Proc.capture("sh", ["-c", "echo hello"]) {
+            Ok(o) => check(o.exit_code == 0 && o.output.len() == 6, "capture echo hello (6 bytes: hello LF)"),
+            Err(e) => check(false, "capture echo ({e.message})"),
+        }
+        match Proc.capture("sh", ["-c", "exit 7"]) {
+            Ok(o) => check(o.exit_code == 7 && o.output.len() == 0, "capture exit 7, empty output"),
+            Err(e) => check(false, "capture exit ({e.message})"),
+        }
+    }
+
+    // ── Proc.executable:自身可执行路径(P1)───────────────────
+    match Proc.executable() {
+        Ok(p) => check(p.is_absolute_path() && p.to_str().len() > 0, "executable absolute non-empty"),
+        Err(e) => check(false, "executable ({e.message})"),
+    }
+
+    // ── Process.wait_timeout:快退分支(P2)────────────────────
+    if on_windows {
+        match Proc.spawn("cmd", ["/c", "exit", "4"]) {
+            Ok(p) => match p.wait_timeout(3000) {
+                Ok(c) => check(c != null && (c as i32) == 4, "wait_timeout fast exit 4"),
+                Err(e) => check(false, "wait_timeout fast ({e.message})"),
+            },
+            Err(e) => check(false, "spawn fast ({e.message})"),
+        }
+    } else {
+        match Proc.spawn("sh", ["-c", "exit 4"]) {
+            Ok(p) => match p.wait_timeout(3000) {
+                Ok(c) => check(c != null && (c as i32) == 4, "wait_timeout fast exit 4"),
+                Err(e) => check(false, "wait_timeout fast ({e.message})"),
+            },
+            Err(e) => check(false, "spawn fast ({e.message})"),
+        }
+    }
+
+    // ── Process.wait_timeout 超时 + kill 收割(P2)──────────────
+    // 长跑子进程:短超时 Ok(null)(未退出,句柄仍可用)→ kill → wait_timeout
+    // 收割退出码(Windows TerminateProcess=1;POSIX SIGKILL=137)。
+    if on_windows {
+        match Proc.spawn("cmd", ["/c", "ping", "-n", "10", "127.0.0.1"]) {
+            Ok(p) => {
+                val timed_out = match p.wait_timeout(300) {
+                    Ok(c) => c == null,
+                    Err(_) => false,
+                }
+                check(timed_out, "wait_timeout expires (null) while child runs")
+                match p.kill() {
+                    Ok(_) => match p.wait_timeout(3000) {
+                        Ok(c) => check(c != null && (c as i32) == 1, "kill then reap exit 1"),
+                        Err(e) => check(false, "reap after kill ({e.message})"),
+                    },
+                    Err(e) => check(false, "kill ({e.message})"),
+                }
+            },
+            Err(e) => check(false, "spawn ping ({e.message})"),
+        }
+    } else {
+        match Proc.spawn("sh", ["-c", "sleep 5"]) {
+            Ok(p) => {
+                val timed_out = match p.wait_timeout(300) {
+                    Ok(c) => c == null,
+                    Err(_) => false,
+                }
+                check(timed_out, "wait_timeout expires (null) while child runs")
+                match p.kill() {
+                    Ok(_) => match p.wait_timeout(3000) {
+                        Ok(c) => check(c != null && (c as i32) == 137, "kill then reap exit 137 (128+SIGKILL)"),
+                        Err(e) => check(false, "reap after kill ({e.message})"),
+                    },
+                    Err(e) => check(false, "kill ({e.message})"),
+                }
+            },
+            Err(e) => check(false, "spawn sleep ({e.message})"),
+        }
+    }
+
+    // ── run_with_options:env 完整替换(P2)─────────────────────
+    // cmd 展开 %VAR% 作 exit 参数;POSIX sh 展开 $VAR。
+    if on_windows {
+        match Proc.run_with_options("cmd", ["/c", "exit", "%FROND_P2_VAR%"], Proc.SpawnOptions(null, ["FROND_P2_VAR=5"])) {
+            Ok(c) => check(c == 5, "run_with_options env replaces (exit 5)"),
+            Err(e) => check(false, "run_with_options env ({e.message})"),
+        }
+    } else {
+        match Proc.run_with_options("sh", ["-c", "exit $FROND_P2_VAR"], Proc.SpawnOptions(null, ["FROND_P2_VAR=5"])) {
+            Ok(c) => check(c == 5, "run_with_options env replaces (exit 5)"),
+            Err(e) => check(false, "run_with_options env ({e.message})"),
+        }
+    }
+
+    // ── capture_with_options:cwd(P2)──────────────────────────
+    // cmd 的 cd / sh 的 pwd 输出工作目录;逐字节前缀比对(尾部是行结束符)。
+    // tmp_dir() 返回裸 Path(非 Throw,与 home_dir 不同)。
+    {
+        val tmp = Info.tmp_dir()
+        val cwd_str = tmp.to_str()
+        if on_windows {
+            match Proc.capture_with_options("cmd", ["/c", "cd"], Proc.SpawnOptions(tmp, [])) {
+                Ok(o) => {
+                    val out_b = o.output.bytes()
+                    val cwd_b = cwd_str.bytes()
+                    // Path normalizes separators to '/'; cmd's cd prints '\'.
+                    var same = out_b.len() == cwd_b.len() + 2
+                    var i = 0 as usize
+                    while same && i < cwd_b.len() {
+                        if out_b[i] != cwd_b[i] && !(cwd_b[i] == (47 as u8) && out_b[i] == (92 as u8)) { same = false }
+                        i = i + 1
+                    }
+                    check(o.exit_code == 0 && same, "capture_with_options cwd honored (cd output)")
+                },
+                Err(e) => check(false, "capture cwd ({e.message})"),
+            }
+        } else {
+            match Proc.capture_with_options("sh", ["-c", "pwd"], Proc.SpawnOptions(tmp, [])) {
+                Ok(o) => {
+                    val out_b = o.output.bytes()
+                    val cwd_b = cwd_str.bytes()
+                    var same = out_b.len() == cwd_b.len() + 1
+                    var i = 0 as usize
+                    while same && i < cwd_b.len() {
+                        if out_b[i] != cwd_b[i] { same = false }
+                        i = i + 1
+                    }
+                    check(o.exit_code == 0 && same, "capture_with_options cwd honored (pwd output)")
+                },
+                Err(e) => check(false, "capture cwd ({e.message})"),
+            }
+        }
+    }
+
+    summary()
+}

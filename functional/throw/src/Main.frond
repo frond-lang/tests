@@ -34,8 +34,8 @@ fun chainDiv(a: i32, b: i32, c: i32): Throw<i32, Error> {
 }
 
 // 错误子类型
-type UserNotFound: Err = UserNotFound(msg: str)
-type Timeout: Err = Timeout(msg: str)
+type UserNotFound: Err = UserNotFound(message: str)
+type Timeout: Err = Timeout(message: str)
 
 fun lookup(id: i32): Throw<str, Error> {
     if id < 0 { throw UserNotFound("negative id") }

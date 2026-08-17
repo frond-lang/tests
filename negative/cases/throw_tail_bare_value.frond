@@ -1,0 +1,8 @@
+// EXPECT: sync functions do not auto-wrap
+type E = | E(str)
+
+fun leak(): Throw<i64, E> { 42 }
+
+fun main(): void {
+    println("unreachable")
+}

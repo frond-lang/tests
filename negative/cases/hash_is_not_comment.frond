@@ -1,0 +1,8 @@
+// `#` only opens a raw block (`#{ ... }#`); a bare `#` is an error token, not a comment.
+// Regression: combined with multi-byte text it used to hit the lexer slice panic, and
+// with plain ASCII it surfaced as a far-away "expected expression" at the same spot.
+// EXPECT: unexpected character '#'
+fun main(): void {
+    # this is not a comment 注释
+    println("nope")
+}

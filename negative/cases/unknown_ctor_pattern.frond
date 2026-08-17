@@ -1,0 +1,14 @@
+// EXPECT: unknown constructor pattern 'Some'
+import std.io.Path
+
+fun probe(p: Path?): str {
+    // T? has no Some/None constructors — match with `null => ...` plus a
+    // binding arm instead. Previously bound x to a silent TypeVar and broke
+    // method dispatch at IR time.
+    match p {
+        Some(x) => x.to_str(),
+        None => "",
+    }
+}
+
+fun main(): void { println("unreachable") }

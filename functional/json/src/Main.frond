@@ -1,0 +1,145 @@
+// 功能验证:std.json —— 分层拆分后:Parse.parse(解析)/Format.format(序列化)/Json.get+as_*(值访问器)。
+// RFC 8259 子集:全部转义(含 \uXXXX 与代理对)、数字、嵌套容器;
+// parse↔format 往返恒等;负向=位置化错误信息。
+// 注意:Frond 字面量里反斜杠双写;str 无 contains 方法(用 Str.contains);
+// format 现为朴素循环形态(match 臂内自递归)——同时是引擎 bug #102
+// (递归帧值表重叠)修复的回归锚,见 BUG_REPORT。
+import std.json
+import std.core.types
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+
+fun parse_ok(text: str): Json {
+    match Parse.parse(text) {
+        Ok(v) => v
+        Err(e) => JStr("PARSE_ERROR: {e.message}"),
+    }
+}
+
+fun parse_is_err(text: str, name: str): void {
+    match Parse.parse(text) {
+        Ok(_) => check(false, name),
+        Err(e) => check(e.message.len() > 0, name),
+    }
+}
+
+fun main(): void {
+    println("== std.json parse ==")
+    check(parse_ok("null") == JNull, "null")
+    check(parse_ok("true") == JBool(true), "true")
+    check(parse_ok(" false ") == JBool(false), "false with ws")
+    check(parse_ok("42") == JNum(42.0), "integer")
+    check(parse_ok("-7") == JNum(-7.0), "negative integer")
+    check(parse_ok("2.5") == JNum(2.5), "fraction")
+    check(parse_ok("1e3") == JNum(1000.0), "exponent")
+    check(parse_ok("2.5e-2") == JNum(0.025), "fraction + negative exponent")
+    check(parse_ok("\"hello\"") == JStr("hello"), "simple string")
+    check(parse_ok("[]") == JArr([]), "empty array")
+    check(parse_ok("\{\}") == JObj([]), "empty object")
+    check(parse_ok("\"你好多字节\"") == JStr("你好多字节"), "utf-8 passthrough")
+
+    println("== std.json escapes ==")
+    check(parse_ok("\"a\\\"b\"") == JStr("a\"b"), "escaped quote")
+    check(parse_ok("\"back\\\\slash\"") == JStr("back\\slash"), "escaped backslash")
+    check(parse_ok("\"tab\\t\"") == JStr("tab\t"), "escaped tab")
+    check(parse_ok("\"nl\\n\"") == JStr("nl\n"), "escaped newline")
+    check(parse_ok("\"sl\\/ash\"") == JStr("sl/ash"), "escaped slash")
+    // \b\f 的期望值用字节构造:Frond 字面量没有 \b \f 转义(词法器转义集里没有它们)
+    val bs_ff: str = "bs" + ([8u8] as str) + "ff" + ([12u8] as str)
+    check(parse_ok("\"bs\\bff\\f\"") == JStr(bs_ff), "escaped backslash-b backslash-f")
+    check(parse_ok("\"\\u0041\\u00e9\"") == JStr("Aé"), "u escapes basic")
+    check(parse_ok("\"\\u4f60\\u597d\"") == JStr("你好"), "u escapes bmp")
+    check(parse_ok("\"\\ud83d\\ude00\"") == JStr("😀"), "u surrogate pair")
+    parse_is_err("\"\\ud83d\"", "lone high surrogate -> err")
+    parse_is_err("\"\\ude00\"", "lone low surrogate -> err")
+    parse_is_err("\"\\uD83D\\u0041\"", "high surrogate + non-surrogate -> err")
+    parse_is_err("\"\\u00zz\"", "bad hex digits -> err")
+    parse_is_err("\"\\q\"", "invalid escape -> err")
+
+    println("== std.json containers ==")
+    val doc = parse_ok("\{\"name\":\"frond\",\"version\":2,\"stable\":true,\"meta\":\{\"stars\":128\},\"tags\":[\"a\",\"b\"],\"none\":null\}")
+    check(Json.as_str(Json.get(doc, "name")) == "frond", "get string field")
+    check(Json.as_num(Json.get(doc, "version")) == 2.0, "get number field")
+    check(Json.as_bool(Json.get(doc, "stable")) == true, "get bool field")
+    check(Json.get(doc, "none") == JNull, "get null field")
+    check(Json.as_num(Json.get(Json.get(doc, "meta") ?? JNull, "stars")) == 128.0, "nested object get")
+    val tags = Json.as_arr(Json.get(doc, "tags"))
+    check(tags != null && (tags ?? []).len() == 2, "array field len")
+    check(Json.get(doc, "missing") == null, "missing key -> null")
+    check(Json.get(JNum(1.0), "x") == null, "get on non-object -> null")
+    check(Json.as_str(JBool(true)) == null, "as_str wrong variant -> null")
+    val entries = Json.as_obj(doc)
+    check(entries != null && (entries ?? []).len() == 6, "as_obj entries len")
+    check((entries ?? [])[0].key == "name", "entry key preserved in order")
+
+    println("== std.json format ==")
+    check(Format.format(JNull) == "null", "format null")
+    check(Format.format(JBool(false)) == "false", "format bool")
+    check(Format.format(JNum(2.5)) == "2.5", "format fraction number")
+    check(Format.format(JNum(-7.0)) == "-7", "format negative integer number")
+    check(Format.format(JStr("a\"b\\c")) == "\"a\\\"b\\\\c\"", "format escapes")
+    check(Format.format(JStr("nl\ntab\t")) == "\"nl\\ntab\\t\"", "format control escapes")
+    check(Format.format(JArr([JNum(1.0), JBool(false), JNull])) == "[1,false,null]", "format array")
+    check(Format.format(JObj([JEntry("k", JStr("v"))])) == "\{\"k\":\"v\"\}", "format object")
+    val nested = JObj([JEntry("list", JArr([JObj([JEntry("deep", JBool(true))]), JStr("end")]))])
+    check(Format.format(nested) == "\{\"list\":[\{\"deep\":true\},\"end\"]\}", "format nested")
+    // 多条目对象含嵌套对象(多位置)——引擎 #102 修复的回归锚
+    val o3 = JObj([JEntry("a", JObj([JEntry("d", JStr("x"))])), JEntry("b", JObj([JEntry("e", JStr("y"))])), JEntry("c", JObj([JEntry("f", JStr("z"))]))])
+    check(Format.format(o3) == "\{\"a\":\{\"d\":\"x\"\},\"b\":\{\"e\":\"y\"\},\"c\":\{\"f\":\"z\"\}\}", "format three objects")
+    val doc3 = parse_ok("\{\"a\":1,\"b\":[true,null,\"x\"],\"c\":\{\"d\":-0.5\}\}")
+    check(Format.format(doc3) == "\{\"a\":1,\"b\":[true,null,\"x\"],\"c\":\{\"d\":-0.5\}\}", "format doc3 exact")
+
+    println("== roundtrip ==")
+    val samples: str[] = [
+        "null", "true", "42", "-7.25", "1e3",
+        "\"plain\"", "\"a\\\"b\\\\c\\nd\\te\"",
+        "\"\\u00e9\\u4f60\\ud83d\\ude00\"",
+        "[1, 2, 3]", "[[1], [2, 3], []]",
+        "\{\}", "\{\"a\":1,\"b\":[true,null,\"x\"],\"c\":\{\"d\":-0.5\}\}",
+    ]
+    var all_rt = true
+    for s in samples.iter() {
+        val parsed = Parse.parse(s)
+        match parsed {
+            Ok(v) => {
+                val text = Format.format(v)
+                match Parse.parse(text) {
+                    Ok(back) => {
+                        if Format.format(back) != text { all_rt = false }
+                    },
+                    Err(_) => { all_rt = false },
+                }
+            },
+            Err(_) => { all_rt = false },
+        }
+    }
+    check(all_rt, "parse -> format -> parse -> format fixed point")
+    check(Format.format(parse_ok("\{\"b\":2,\"a\":1\}")) == "\{\"b\":2,\"a\":1\}", "key order preserved")
+
+    println("== errors ==")
+    parse_is_err("\{", "unterminated object")
+    parse_is_err("[1, 2", "unterminated array")
+    parse_is_err("\"abc", "unterminated string")
+    parse_is_err("tru", "bad literal")
+    parse_is_err("1.2.3", "malformed number")
+    parse_is_err("[1] junk", "trailing junk")
+    parse_is_err("\{\"k\" 1\}", "missing colon")
+    parse_is_err("[1,,2]", "double comma")
+    parse_is_err("", "empty input")
+    match Parse.parse("[1, 2") {
+        Ok(_) => check(false, "error message has position"),
+        Err(e) => check(Str.contains(e.message, "at byte"), "error message has position"),
+    }
+
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

@@ -7,6 +7,7 @@
 //   Bug #22: i32 MIN / -1 panic    → 避免有符号 MIN / -1
 //   Bug #30: &&/|| 在 while 条件中 stuck → 本测试不在 while 条件中用 &&/||（用 if 表达式）
 //   Bug #37: while 条件中调用用户函数 hang → 用内联条件
+import std.core
 var failures: i32 = 0
 
 fun check(cond: bool, name: str): void {
@@ -249,5 +250,25 @@ fun main(): void {
     check(clamp(-5, 0, 10) == 0, "clamp below lo")
     check(clamp(15, 0, 10) == 10, "clamp above hi")
 
-    summary()
+        // 无符号 64 位有序比较(修复前被有符号 I64 域比较误判:i63 以上的值符号位被当负)
+    val big: u64 = 18446744073709551615
+    val half: u64 = 9223372036854775808
+    check(big >= 0, "u64 max >= 0")
+    check(big > half, "u64 max > 2^63")
+    check(half < big, "2^63 < u64 max")
+    val bsz: usize = 15816722976141896202 as usize
+    check(bsz >= 0, "large usize >= 0")
+    check(bsz > 9223372036854775807 as usize, "large usize > i64 max")
+    check(big == 18446744073709551615, "u64 eq bit-exact")
+
+    // u128 全域比较(修复前 i128 域位重解释,2^127 以上次序反转)
+    val umax: u128 = U128.MAX
+    val over: u128 = 170141183460469231731687303715884105727 as u128
+    check(umax > over, "u128 max > 2^127-1")
+    check(umax >= 0, "u128 max >= 0")
+    check(over < umax, "2^127-1 < u128 max")
+    check(umax == 340282366920938463463374607431768211455, "u128 eq full domain")
+    check(over <= over, "u128 le self")
+
+summary()
 }

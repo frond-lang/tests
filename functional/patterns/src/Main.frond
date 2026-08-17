@@ -246,5 +246,20 @@ fun main(): void {
     val sum_tree = Node(1, Node(2, Leaf, Leaf), Node(3, Node(4, Leaf, Leaf), Leaf))
     check(treeSum(sum_tree) == 10, "recursive tree pattern sum")
 
+    // match 臂数组 join：非空字面量(Array<u8>) + 空字面量(Array<TypeVar>)。
+    // 修复前 peer_type 无数组分支 → join 成 Unknown → 后续方法调用编成
+    // 无 target 的 Call 节点、运行时 panic；标注版不受影响(对照)。
+    val joined = match command("x") {
+        0 => [65, 66],
+        _ => [],
+    }
+    check(joined.len() == 2, "match arms join non-empty + empty array (unlabeled)")
+
+    val labeled: u8[] = match command("x") {
+        0 => [65, 66],
+        _ => [],
+    }
+    check(labeled.len() == 2, "match arms join non-empty + empty array (labeled)")
+
     summary()
 }

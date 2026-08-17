@@ -40,16 +40,27 @@ async fun with_sync_defers(): Async<Throw<str, IOError>> {
 // signatures carrying placeholder types (concretize_type's Generic branch
 // discarding type args), which broke the value-propagation chain for these
 // compositions. Both fixed — the direct shape must stay green.
+
+// 历史回归(2026-08-16 通用修复):async fun 内 "失败的 await 绑定 + defer 引用该绑定"。
+// 旧机制:defer 挂在编译期静态表,任何退出路径无条件 drain —— 绑定失败时 defer 照跑,
+// 读未绑定槽位,经 async 机器后原生崩溃(同程序第二次 async 失败即 exit 127 无消息)。
+// 新语义:defer 语句点动态注册,未执行到的 defer 不注册不运行。
+async fun open_fail(p: str): Async<Throw<str, IOError>> {
+    val f = File.open(Path.from(p), File.read_only()).await()?
+    defer f.close().await()
+    Ok("never")
+}
+
 fun sync_defer_await(): void {
-    Fs.write_file("defer_s.txt", "x").await()?
+    Fs.write_file(Path.from("defer_s.txt"), "x").await()?
     defer {
-        val _ = File.remove("defer_s.txt").await()
+        val _ = File.remove(Path.from("defer_s.txt")).await()
     }
     print("body,")
 }
 
 fun File_remove_exists_check(): bool {
-    match File.remove("defer_s.txt").await() {
+    match File.remove(Path.from("defer_s.txt")).await() {
         Ok(_) => true,
         Err(_) => false,
     }
@@ -60,17 +71,17 @@ fun File_remove_exists_check(): bool {
 // Env.remove via the bare-name slot and deleted NOTHING while returning Ok).
 // Regression anchor: the side effect itself (world-state diff), never Ok/Err.
 fun file_remove_side_effect_shape(): void {
-    Fs.write_file("defer_fr.txt", "x").await()?
-    val r = File.remove("defer_fr.txt").await()
+    Fs.write_file(Path.from("defer_fr.txt"), "x").await()?
+    val r = File.remove(Path.from("defer_fr.txt")).await()
     match r {
         Ok(_) => {
-            val gone = match Fs.exists("defer_fr.txt").await() {
+            val gone = match Fs.exists(Path.from("defer_fr.txt")).await() {
                 Ok(b) => b == false,
                 Err(_) => false,
             }
             check(gone, "File.remove(.await) actually deletes the file")
         },
-        Err(e) => check(false, "File.remove(.await) returned Err ({e.msg})"),
+        Err(e) => check(false, "File.remove(.await) returned Err ({e.message})"),
     }
 }
 
@@ -82,10 +93,10 @@ fun main(): void {
     check(y == 2, "async fn + defer(await) returns to caller (y={y})")
 
     // 2) stdlib 真实链：one-shot 内部 defer close -> 数据往返
-    Fs.write_file("defer_t.txt", "roundtrip").await()?
-    val back = Fs.read_file("defer_t.txt").await()?
+    Fs.write_file(Path.from("defer_t.txt"), "roundtrip").await()?
+    val back = Fs.read_file(Path.from("defer_t.txt")).await()?
     check(back == "roundtrip", "Fs one-shot (defer close) roundtrip")
-    val _ = File.remove("defer_t.txt").await()
+    val _ = File.remove(Path.from("defer_t.txt")).await()
 
     // 2b) 同步函数 + defer 内 await：返回后续执行保留（曾永久挂死）
     sync_defer_await()
@@ -97,6 +108,16 @@ fun main(): void {
     // 3) defer 的执行发生在函数体完成之后（LIFO）
     val _ = with_sync_defers().await()?
     check(g_log == "body,D1,D0,", "defers run LIFO after body (got {g_log})")
+
+    // 4) 未执行到的 defer 不得运行:两次"绑定失败+defer"不得崩溃且不触发 defer 体
+    match open_fail("no_such_dir_a/x").await() {
+        Ok(_) => check(false, "open_fail unexpectedly ok"),
+        Err(e) => check(true, "unreached defer: 1st failing binding"),
+    }
+    match open_fail("no_such_dir_b/y").await() {
+        Ok(_) => check(false, "open_fail unexpectedly ok (2nd)"),
+        Err(e) => check(true, "unreached defer: 2nd failing binding (was exit-127 crash)"),
+    }
 
     println("")
     if failures == 0 {

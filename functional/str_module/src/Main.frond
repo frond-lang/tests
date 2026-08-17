@@ -1,0 +1,87 @@
+// 功能验证:std.core 的 Str 命名空间 —— 字符串算法(字节索引语义)
+// index_of/contains/starts_with/ends_with/split/trim 族/to_upper_ascii/
+// to_lower_ascii/replace/repeat/substring + UTF-8 透明性。
+import std.core.types
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}
+
+fun main(): void {
+    // ── 查找族(字节偏移语义)────────────────────────────────
+    check(Str.index_of("hello world", "world") == 6, "index_of hit at byte 6")
+    check(Str.index_of("hello", "z") == -1, "index_of miss is -1")
+    check(Str.index_of("abcabc", "abc") == 0, "index_of first occurrence")
+    check(Str.index_of("aaa", "aa") == 0, "index_of overlapping prefix")
+    check(Str.contains("hello", "ell"), "contains hit")
+    check(!Str.contains("hello", "zll"), "contains miss")
+    check(Str.contains("abc", ""), "contains empty is true")
+    check(Str.starts_with("hello", "he"), "starts_with hit")
+    check(!Str.starts_with("hello", "He"), "starts_with case sensitive")
+    check(Str.starts_with("abc", "abc"), "starts_with full equal")
+    check(!Str.starts_with("ab", "abc"), "starts_with prefix too long")
+    check(Str.ends_with("hello", "lo"), "ends_with hit")
+    check(!Str.ends_with("hello", "LO"), "ends_with case sensitive")
+    check(!Str.ends_with("lo", "hello"), "ends_with suffix too long")
+
+    // ── split(Go strings.Split 形态:边界产生空片)───────────
+    check(Str.split("a,b,c", ",").len() == 3, "split 3 parts")
+    check(Str.split("a,b,c", ",")[1] == "b", "split middle part")
+    check(Str.split(",a,", ",").len() == 3, "split edge separators")
+    check(Str.split(",a,", ",")[0] == "", "split leading empty piece")
+    check(Str.split("abc", ",").len() == 1, "split no occurrence")
+    check(Str.split("abc", "").len() == 1, "split empty sep returns [s]")
+    check(Str.split("", ",").len() == 1, "split empty string")
+    check(Str.split("a::b", "::").len() == 2, "split multi-byte separator")
+
+    // ── trim 族(ASCII 空白:空格 \t \r \n)──────────────────
+    check(Str.trim("  hi  ") == "hi", "trim both ends")
+    check(Str.trim("\t\r\nhi \t") == "hi", "trim all ascii whitespace kinds")
+    check(Str.trim("hi") == "hi", "trim no-op")
+    check(Str.trim("   ") == "", "trim all whitespace")
+    check(Str.trim_start("  x  ") == "x  ", "trim_start keeps tail")
+    check(Str.trim_end("  x  ") == "  x", "trim_end keeps head")
+
+    // ── ASCII 大小写(非字母字节不动)────────────────────────
+    check(Str.to_upper_ascii("aBc1!") == "ABC1!", "to_upper_ascii")
+    check(Str.to_lower_ascii("AbC1!") == "abc1!", "to_lower_ascii")
+    check(Str.to_upper_ascii("") == "", "to_upper_ascii empty")
+
+    // ── replace / repeat / substring ─────────────────────────
+    check(Str.replace("a-b-c", "-", "+") == "a+b+c", "replace all")
+    check(Str.replace("abc", "z", "y") == "abc", "replace no hit")
+    check(Str.replace("a--b", "-", "+") == "a++b", "replace adjacent")
+    check(Str.replace("aaa", "a", "bc") == "bcbcbc", "replace expanding")
+    check(Str.repeat("ab", 3) == "ababab", "repeat 3")
+    check(Str.repeat("ab", 0) == "", "repeat 0")
+    check(Str.repeat("ab", -1) == "", "repeat negative")
+    check(Str.substring("hello", 1, 4) == "ell", "substring [1,4)")
+    check(Str.substring("hello", 0, 5) == "hello", "substring full")
+    check(Str.substring("hello", 3, 3) == "", "substring empty range")
+    check(Str.substring("hello", 4, 2) == "", "substring inverted")
+    check(Str.substring("hello", 0, 99) == "", "substring out of range")
+
+    // ── UTF-8 透明性:分隔符匹配不劈码点 ─────────────────────
+    check(Str.contains("héllo", "é"), "utf8 contains multibyte")
+    check(Str.index_of("héllo", "l") == 3, "utf8 index_of after 2-byte char")
+    val uparts = Str.split("é,ö,ü", ",")
+    check(uparts.len() == 3 && uparts[1] == "ö", "utf8 split pieces intact")
+
+    summary()
+}

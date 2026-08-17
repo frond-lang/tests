@@ -1,0 +1,9 @@
+// EXPECT: different bit widths
+fun main(): void {
+    val a: i64? = 42
+    val b: i32 = 43
+    // Nullable operands must undergo the SAME width check as plain ints:
+    // previously the nullable wrapper made both is_int()/is_float() false,
+    // silently skipping the check (mixed-width compared at runtime by tag → false).
+    println("{a == b}")
+}

@@ -47,13 +47,13 @@ fun main(): void {
     check(p.alignment() == 4, "Point alignment() == 4")
 
     // ── trait Value: value operations ───────────────────────────────
-    check(p.format() == "Point(x: 3, y: 4)", "Point format()")
+    check(p.repr() == "Point(x: 3, y: 4)", "Point repr()")
 
     // ── scalar types also get reflect methods ───────────────────────
     val n: i32 = 42
     check(n.type_name() == "i32", "i32 type_name()")
     check(n.kind() == "Primitive", "i32 kind() == Primitive")
-    check(n.format() == "42", "i32 format()")
+    check(n.repr() == "42", "i32 repr()")
 
     // ── str type ────────────────────────────────────────────────────
     val s = "hello"
@@ -65,11 +65,11 @@ fun main(): void {
     check(c.type_name() == "Shape", "ADT type_name()")
     check(c.constructor() == "Circle", "ADT constructor() == Circle")
     check(c.kind() == "Adt", "ADT kind() == Adt")
-    check(c.format() == "Circle(2)", "ADT format()")
+    check(c.repr() == "Circle(2)", "ADT repr()")
 
     val e = Shape.Empty
     check(e.constructor() == "Empty", "ADT Empty constructor()")
-    check(e.format() == "Empty", "ADT Empty format()")
+    check(e.repr() == "Empty", "ADT Empty repr()")
 
     // ── array: builtin len() (NOT a reflect method) ─────────────────
     val arr: i32[] = [10, 20, 30]

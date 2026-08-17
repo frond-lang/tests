@@ -195,7 +195,14 @@ fun main(): void {
     // cast 嵌套在算术表达式
     check(10i32 as i64 * 20i32 as i64 + 5i32 as i64 == 205i64, "nested cast arithmetic")
 
-    summary()
+        // 裸大字面量向数值 cast 目标提升(修复前 IR 常量按 i32 解析报超界)
+    check((5000000000 as i64) == 5000000000, "big int literal as i64")
+    check((18446744073709551615 as u64) == 18446744073709551615, "max u64 literal as u64")
+    val opt = 5000000000 as i64?
+    match opt { null => check(false, "big literal as i64?"), v => check(v == 5000000000, "big literal as i64?") }
+    check((42 as str) == "42", "int as str unchanged")
+
+summary()
 }
 
 // 嵌套泛型 cast：(x as f64) as T

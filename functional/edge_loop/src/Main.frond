@@ -403,5 +403,28 @@ fun main(): void {
     check(matrix[1][2] == 5, "matrix[1][2]=5")
     check(matrix[2][2] == 8, "matrix[2][2]=8")
 
+
+    // ── var-aliasing regression: branch-local var initialized from a loop-level
+    // val + inner loop modifying it (engine fix: fresh slot for ref-initialized
+    // vars; previously the inner writebacks clobbered the val's slot) ──
+    var alias_buf: u8[] = [97, 98, 99, 100, 101, 0]
+    var alias_log: str = ""
+    var alias_i: usize = 0
+    while alias_i < 2 {
+        val st = alias_i * 4
+        val en = if alias_i == 0 {
+            st + 4
+        } else {
+            var e = st
+            while e < alias_buf.len() && alias_buf[e] != 0 {
+                e = e + 1
+            }
+            e
+        }
+        alias_log = alias_log + st + "/" + en + ";"
+        alias_i = alias_i + 1
+    }
+    check(alias_log == "0/4;4/5;", "loop val survives branch var writebacks (got {alias_log})")
+
     summary()
 }

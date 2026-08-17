@@ -53,12 +53,14 @@ fun recNullField(): i32 {
     val r = P(null, "x")
     r.a ?? 42
 }
-type R = | Ok(i32?) | Err(str)
+// 变体名改用 Good/Bad:叫 Ok/Err 的用户 ADT 会在 Throw 上下文里遮蔽内建构造器,
+// 漏包尾(裸 R 流出 Throw 声明)已是编译错误——见 negative/throw_tail_user_ctor_shadow。
+type R = | Good(i32?) | Bad(str)
 fun adtNullPayload(): i32 {
-    val r = Ok(null)
+    val r = Good(null)
     match r {
-        Ok(v) => v ?? 100
-        Err(m) => 0 - 1
+        Good(v) => v ?? 100
+        Bad(m) => 0 - 1
     }
 }
 type E = E(str)

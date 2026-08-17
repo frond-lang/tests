@@ -1,0 +1,8 @@
+// EXPECT: field 'Instant.nanos' is private
+import std.time.Instant
+
+fun main(): void {
+    val t = Instant.now()
+    val _ = t.nanos
+    println("x")
+}

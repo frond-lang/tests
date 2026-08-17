@@ -1,0 +1,8 @@
+// Bug #103:Path 0 方法糖曾把任何同名 std 函数当候选(接收者/元数不校验),
+// x.format() 在 i32 上静默编译成 Format.format(i32) 运行时 panic。
+// 修复后:候选不合格落穿到兜底,干净报 no method。
+// EXPECT: no method 'format' on type 'i32'
+fun main(): void {
+    val x = 42
+    println(x.format())
+}

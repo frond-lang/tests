@@ -1,0 +1,90 @@
+std/json/Json.frond:120:31: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+std/json/Json.frond:232:16: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+std/json/Json.frond:309:27: ambiguous constructor 'JArr': defined by types [Json, J]; use Type.JArr to disambiguate or provide a type context
+std/json/Json.frond:324:31: ambiguous constructor 'JArr': defined by types [Json, J]; use Type.JArr to disambiguate or provide a type context
+std/json/Json.frond:337:27: ambiguous constructor 'JObj': defined by types [Json, J]; use Type.JObj to disambiguate or provide a type context
+std/json/Json.frond:366:31: ambiguous constructor 'JObj': defined by types [Json, J]; use Type.JObj to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:59:16: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:60:28: method 'Parser.parse_value' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:61:16: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:63:17: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:70:24: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:70:13: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:74:25: method 'Parser.parse_object' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:76:24: method 'Parser.parse_array' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:78:25: method 'Parser.parse_string' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:80:23: method 'Parser.expect_lit' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:82:23: method 'Parser.expect_lit' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:84:23: method 'Parser.expect_lit' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:86:25: method 'Parser.parse_number' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:88:17: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:96:24: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:96:13: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:101:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:101:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:117:31: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:122:32: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:122:21: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:138:32: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:138:21: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:140:32: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:140:21: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:144:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:144:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:150:38: method 'Parser.slice_str' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:153:13: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:184:29: method 'Parser.slice_str' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:185:27: method 'Parser.str_to_f64' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:186:16: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:258:16: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:261:27: ambiguous constructor 'JArr': defined by types [Json, J]; use Type.JArr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:264:20: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:265:32: method 'Parser.parse_value' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:267:20: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:269:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:269:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:276:31: ambiguous constructor 'JArr': defined by types [Json, J]; use Type.JArr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:278:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:278:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:286:16: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:289:27: ambiguous constructor 'JObj': defined by types [Json, J]; use Type.JObj to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:292:20: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:294:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:294:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:296:33: method 'Parser.parse_string' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:301:20: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:303:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:303:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:306:20: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:307:32: method 'Parser.parse_value' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:309:20: method 'Parser.skip_ws' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:311:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:311:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:318:31: ambiguous constructor 'JObj': defined by types [Json, J]; use Type.JObj to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:320:28: method 'Parser.fail' is private (module-scoped): mark it pub to call outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:320:17: return type mismatch: expected 'Throw<J, E>', found 'Throw<Json, JsonError>'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:333:21: return type mismatch: expected 'J?', found 'Json'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:363:19: constructor 'Parser.Parser' has private fields: cannot be constructed outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:372:19: constructor 'Parser.Parser' has private fields: cannot be constructed outside module 'std/json/Json.frond'
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:385:36: ambiguous constructor 'JBool': defined by types [Json, J]; use Type.JBool to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:386:39: ambiguous constructor 'JBool': defined by types [Json, J]; use Type.JBool to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:387:33: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:388:33: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:389:34: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:390:36: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:391:34: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:392:37: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:394:21: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:396:22: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:398:22: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:400:22: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:402:22: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:403:33: ambiguous constructor 'JArr': defined by types [Json, J]; use Type.JArr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:406:60: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:406:85: ambiguous constructor 'JNum': defined by types [Json, J]; use Type.JNum to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:422:28: ambiguous constructor 'JObj': defined by types [Json, J]; use Type.JObj to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:426:40: ambiguous constructor 'JBool': defined by types [Json, J]; use Type.JBool to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:442:88: ambiguous constructor 'JBool': defined by types [Json, J]; use Type.JBool to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:450:50: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:468:49: ambiguous constructor 'JStr': defined by types [Json, J]; use Type.JStr to disambiguate or provide a type context
+F:\Projects\Rust\frond-lang\tests\functional\dogfood_json/src/Main.frond:378:13: warning: unreachable match arm

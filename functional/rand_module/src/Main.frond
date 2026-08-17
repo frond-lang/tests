@@ -1,0 +1,94 @@
+// 功能验证:std.rand.Rand —— xorshift64* 伪随机流(usize 主形态 API)
+// 确定性(seed 复现)/前进性/值域(f64∈[0,1)、range 含端点)/seed(0) 安全/
+// usize 与 len/索引的直接组合。
+import std.rand.Rand
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}
+
+fun main(): void {
+    // 确定性:同 seed 同序列
+    Rand.seed(42)
+    val a1 = Rand.next()
+    val b1 = Rand.next()
+    Rand.seed(42)
+    val a2 = Rand.next()
+    val b2 = Rand.next()
+    check(a1 == a2, "same seed reproduces first value")
+    check(b1 == b2, "same seed reproduces second value")
+    check(a1 != b1, "stream advances")
+
+    // usize 形态:非负、可与 len 直接算术
+    val n = Rand.next()
+    check(n >= 0, "next() is usize (non-negative)")
+    val arr = [10, 20, 30, 40, 50, 60]
+    val idx = Rand.range(0, arr.len() - 1)
+    check(idx < arr.len(), "range(len) index stays in bounds")
+    check(arr[idx] >= 10, "indexed element readable")
+
+    // f64 值域 [0, 1)
+    var all_in_range = true
+    var i = 0
+    while i < 1000 {
+        val f = Rand.next_f64()
+        if f < 0.0 || f >= 1.0 { all_in_range = false }
+        i = i + 1
+    }
+    check(all_in_range, "next_f64 stays in [0,1) over 1000 draws")
+
+    // f64 分布弱检查:两端半区都有落点
+    var low = 0
+    var high = 0
+    i = 0
+    while i < 1000 {
+        if Rand.next_f64() < 0.5 { low = low + 1 } else { high = high + 1 }
+        i = i + 1
+    }
+    check(low > 400 && high > 400, "next_f64 roughly balanced ({low}/{high})")
+
+    // range:含端点、退化区间、交换参数
+    check(Rand.range(5, 5) == 5, "range degenerate [5,5]")
+    check(Rand.range(7, 3) == Rand.range(3, 7) || true, "range swapped args accepted")
+    var in_bounds = true
+    var saw_low = false
+    var saw_high = false
+    i = 0
+    while i < 500 {
+        val v = Rand.range(1, 6)
+        if v < 1 || v > 6 { in_bounds = false }
+        if v == 1 { saw_low = true }
+        if v == 6 { saw_high = true }
+        i = i + 1
+    }
+    check(in_bounds, "range stays within [1,6]")
+    check(saw_low && saw_high, "range hits both endpoints over 500 draws")
+
+    // 其他宽度一次 cast 可达
+    check((Rand.next() as u64) >= 0, "next() as u64 reachable")
+    check((Rand.next() as i32) >= -2147483648 || true, "next() as i32 reachable")
+
+    // seed(0):xorshift 零不动点,必须回退默认常数
+    Rand.seed(0)
+    val z1 = Rand.next()
+    val z2 = Rand.next()
+    check(z1 != 0 && z1 != z2, "seed(0) avoids xorshift zero fixed point")
+
+    summary()
+}

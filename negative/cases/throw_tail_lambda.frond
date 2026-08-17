@@ -1,0 +1,7 @@
+// EXPECT: sync functions do not auto-wrap
+type E = | E(str)
+
+fun main(): void {
+    val f = fun(x: i64): Throw<i64, E> { x }
+    println("unreachable")
+}

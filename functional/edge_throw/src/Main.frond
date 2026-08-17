@@ -34,8 +34,8 @@ fun summary(): void {
 }
 
 // ─── 错误子类型定义 ───
-type UserNotFound: Err = UserNotFound(msg: str)
-type Timeout: Err = Timeout(msg: str)
+type UserNotFound: Err = UserNotFound(message: str)
+type Timeout: Err = Timeout(message: str)
 type Rec = Rec(v: i32)
 
 // ─── 1. 基本 throw + catch ───
@@ -274,7 +274,7 @@ fun main(): void {
     println("--- 9. Throw from within a match arm ---")
     match throwInMatch(0i32) {
         Ok(_) => check(false, "throwInMatch(0) should throw")
-        Error(e) => check(e.msg == "zero case", "throwInMatch(0) throws zero case (Bug #27)")
+        Error(e) => check(e.message == "zero case", "throwInMatch(0) throws zero case (Bug #27)")
     }
     match throwInMatch(5i32) {
         Ok(v) => check(v == 5i32, "throwInMatch(5) = 5")

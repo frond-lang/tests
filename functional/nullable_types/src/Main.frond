@@ -103,5 +103,26 @@ fun main(): void {
         check(false, "flow-narrowed elem arithmetic (wrong branch)")
     }
 
+    // ── nullable 相等比较(修复前 tag 严格比较静默 false)────────
+    val a: i64? = 42
+    val n: i64? = null
+    check(a == 42, "i64? == bare i32 literal (value equal)")
+    check(a != 43, "i64? != literal")
+    check(!(a == 43), "i64? == wrong literal is false")
+    check(n == null && a != null, "null equality")
+    check(n != 42, "null != value")
+    val f: f64? = 2.5
+    check(f == 2.5, "f64? == literal")
+    val f32v: f32? = 2.5
+    check(f32v == 2.5, "f32? == f64 literal (cross-width value equal)")
+    val s2: str? = "hi"
+    check(s2 == "hi", "str? == str literal")
+
+    // ── 字面量直标 nullable(修复前报 annotation mismatch)──────
+    val lit: i64? = 42
+    check(lit == 42, "val a: i64? = 42 direct literal annotation")
+    val biglit: u64? = 18446744073709551615
+    check(biglit != null, "u64? = max literal annotation")
+
     summary()
 }

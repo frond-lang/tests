@@ -1,0 +1,114 @@
+// 功能验证:std.io.Path 语义(根前缀模型:盘符/UNC/POSIX)+ current_dir_path 联动
+// + __str_array_join 复活回归(to_str / DateTime.format / read_file_path)。
+// 盘符相关断言按宿主平台分支(os_name),同一套件在 Windows/POSIX 都可跑。
+import std.io.Path
+import std.io.Fs
+import std.io.File
+import std.os.Info
+import std.os.Os
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}
+
+fun main(): void {
+    val on_windows = Info.os_name() == "windows"
+
+    // ── 分隔符规范化 + 基本分解 ──────────────────────────────────
+    check(Path.from("a/b/c").to_str() == "a/b/c", "relative roundtrip")
+    check(Path.from("a/./b//c").to_str() == "a/b/c", "dot and empty filtered")
+    check(Path.from("a/b").parent().to_str() == "a", "parent")
+    check(Path.from("a").parent().to_str() == "", "parent of single segment is empty path")
+    check(Path.from("/").parent().is_null(), "parent of root is null")
+    check(Path.from("a/b.txt").filename() == "b.txt", "filename")
+    check(Path.from("a/b.txt").extension() == "txt", "extension")
+    check(Path.from("a/b.txt").file_stem() == "b", "file_stem")
+    check(Path.from("a/b/c").join_str("d").to_str() == "a/b/c/d", "join_str")
+
+    // ── 绝对性:宿主平台语义 ─────────────────────────────────────
+    check(Path.from("/home/u").is_absolute_path() == !on_windows, "posix root absoluteness is host-truth")
+    check(!Path.from("data/cache").is_absolute_path(), "relative never absolute")
+    check(Path.from("/").to_str() == "/", "root-only roundtrip")
+    check(Path.from("").to_str() == "", "empty roundtrip")
+    check(Path.from("//server/share/x").to_str() == "//server/share/x", "unc double-slash preserved")
+    check(Path.from("//server/share").is_absolute_path(), "unc absolute")
+
+    // ── Windows 盘符(POSIX 上 "C:" 只是普通段)─────────────────
+    if on_windows {
+        check(Path.from("C:/Users/x").to_str() == "C:/Users/x", "drive roundtrip")
+        check(Path.from("C:/Users/x").is_absolute_path(), "drive root absolute")
+        check(!Path.from("C:foo").is_absolute_path(), "drive-relative not absolute")
+        check(Path.from("C:foo").to_str() == "C:foo", "drive-relative roundtrip")
+        check(Path.from("C:/a/b").parent().to_str() == "C:/a", "parent keeps drive prefix")
+        check(Path.from("C:/a").join_str("b").to_str() == "C:/a/b", "join keeps drive prefix")
+    } else {
+        check(Path.from("C:/x").to_str() == "C:/x", "posix: colon segment kept literally")
+        check(!Path.from("C:/x").is_absolute_path(), "posix: colon path relative")
+    }
+
+    // ── UTF-8 段 ────────────────────────────────────────────────
+    check(Path.from("中文/路径").to_str() == "中文/路径", "utf8 segments roundtrip")
+    check(Path.from("中文/文件.txt").extension() == "txt", "utf8 filename extension")
+
+    // ── __str_array_join 复活回归 ───────────────────────────────
+    // (历史:空体外加 str[] 参数不可映射,符号从未进入 frond_extern,
+    //  Path.to_str / DateTime.format 曾全部 Err(FfiError symbol not found))
+    check(Path.from("a/b/c").to_str() == "a" + "/" + "b" + "/" + "c", "to_str via array join")
+
+    // ── os 目录 API 直接返回 Path ────────────────────────────────
+    match Os.current_dir() {
+        Ok(p) => {
+            check(p.to_str().len() > 0, "Os.current_dir non-empty")
+            check(p.is_absolute_path(), "Os.current_dir absolute on this host")
+            check(p.join_str("edge_path_join_probe").to_str().len() > p.to_str().len(), "join onto cwd")
+        },
+        Err(e) => check(false, "Os.current_dir ({e.message})"),
+    }
+    check(Info.tmp_dir().to_str().len() > 0, "Info.tmp_dir Path non-empty")
+    match Info.home_dir() {
+        Ok(h) => check(h.is_absolute_path(), "Info.home_dir Path absolute"),
+        Err(e) => check(false, "Info.home_dir ({e.message})"),
+    }
+
+    // ── read_file_path 真实读回(曾静默返回空内容)────────────────
+    // NOTE: 失败的 Throw 逐一消化是惯例写法。历史上"被丢弃的失败 Throw 之后
+    // 任何失败 async io 会 exit 127 崩溃"(未执行到的 defer 读未绑定槽位,
+    // 2026-08-16 已修:defer 改执行点动态注册,回归见 defer_async 套件)。
+    match Fs.write_file(Path.from("_path_probe.txt"), "content-123").await() {
+        Ok(_) => {},
+        Err(e) => check(false, "write probe ({e.message})"),
+    }
+    match Fs.read_file(Path.from("_path_probe.txt")).await() {
+        Ok(s) => check(s == "content-123", "read_file_path content roundtrip"),
+        Err(e) => check(false, "read_file_path ({e.message})"),
+    }
+    match File.remove(Path.from("_path_probe.txt")).await() {
+        Ok(_) => {},
+        Err(e) => check(false, "remove probe ({e.message})"),
+    }
+
+    // ── 4 段限定调用解析回归 ─────────────────────────────────────
+    // (历史:dotted receiver 的限定符被丢弃,降级到包级/全局名;跨模块重名
+    //  函数如 now(SystemTime+Instant)直接二义报错,唯一名靠 fallback 碰巧过)
+    check(std.time.Instant.now().type_name() == "Instant", "4-seg dotted binds Instant.now")
+    check(std.time.SystemTime.now().type_name() == "SystemTime", "4-seg dotted binds SystemTime.now")
+    check(std.time.DateTime.DateTime(2026i32, 8u8, 16u8, 0u8, 0u8, 0u8, 0u32, 0u8, 0u16).format("%m-%d") == "08-16", "4-seg dotted type ctor")
+
+    summary()
+}

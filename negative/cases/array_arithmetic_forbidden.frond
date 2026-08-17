@@ -1,0 +1,9 @@
+// Arrays support no arithmetic. Design rule (user, 2026-08-17): the ONLY array
+// fill syntax is `[v, ..n]`; concatenation is `++`. `arr * n` previously slipped
+// through as a "repeat idiom" (Bug I's original fix spared it) and produced a
+// garbage len-0 array at runtime — it must be a compile error.
+// EXPECT: arrays support no arithmetic
+fun main(): void {
+    val a = [1] * 3
+    println(a.len())
+}
