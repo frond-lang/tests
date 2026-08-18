@@ -108,6 +108,22 @@ fun main(): void {
     check(Mem.equal(["a", "b"], ["a", "b"]), "equal str[] generic")
     check(!Mem.equal(["a"], ["b"]), "equal str[] diff")
 
+
+    // ── compare / index_of / contains (stage 2) ─────────
+    check(Mem.compare([1, 2, 3], [1, 2, 4]) == -1, "compare lt (memcmp)")
+    check(Mem.compare([1, 2], [1, 2]) == 0, "compare eq")
+    check(Mem.compare([2], [1, 9]) == 1, "compare gt on prefix")
+    check(Mem.compare([1, 2], [1, 2, 3]) == -1, "compare shorter-is-less")
+    check(Mem.compare([5000000000i64], [4999999999i64]) == 1, "compare i64 no truncation")
+    check(Mem.compare(["b"], ["a"]) == 1, "compare str[] by bytes")
+    check(Mem.compare(["a"], ["a"]) == 0, "compare str[] equal")
+    check(Mem.index_of([1, 2, 3, 4], [2, 3]) == 1, "index_of u8 (C)")
+    check(Mem.index_of([1, 2], [5]) == -1, "index_of miss")
+    check(Mem.index_of([1], []) == 0, "index_of empty needle at 0")
+    check(Mem.index_of(["x", "y", "z"], ["y"]) == 1, "index_of str[] generic")
+    check(Mem.contains([9, 9, 7], [7]), "contains hit")
+    check(!Mem.contains([9], [8]), "contains miss")
+
     // ── clone (deep copy) ────────────────────────────────
     val grid: u8[][] = [[1, 2], [3, 4]]
     val gc = Mem.clone(grid)

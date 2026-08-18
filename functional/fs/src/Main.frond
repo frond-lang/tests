@@ -258,7 +258,7 @@ fun realpath_checks(): void {
             val s = p.to_str()
             check(p.is_absolute_path(), "realpath absolute")
             check(s.len() > "Root.toml".len(), "realpath longer than input")
-            check(s.contains("Root.toml"), "realpath keeps filename")
+            check(Str.contains(s, "Root.toml"), "realpath keeps filename")
             // idempotent: realpath(realpath(x)) == realpath(x)
             match Fs.realpath(p).await() {
                 Ok(p2) => check(p2.to_str() == s, "realpath idempotent"),
