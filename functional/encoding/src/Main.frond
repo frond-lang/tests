@@ -1,0 +1,187 @@
+// 功能验证：Windows Unicode 正确性（UTF-8 边界约定）
+// Frond str 恒 UTF-8；Windows API 必须经 W 版桥接，ANSI 代码页（GBK 等）
+// 不得泄漏进 str。覆盖 os 域（Env set/get/vars 枚举/remove）与 io 域
+// （File 读写/Dir 创建/枚举/exists/copy/rename/chmod/remove）在非 ASCII
+// 键值与路径下的往返。POSIX 字节直通天然成立，同一套件双平台可跑。
+import std.core
+import std.os.Env
+import std.os.Proc
+import std.io.File
+import std.io.Fs
+import std.io.Dir
+import std.io.Path
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun check_void(t: Throw<void, IOError>, name: str): bool {
+    match t.await() {
+        Ok(_) => { check(true, name); true }
+        Err(e) => { check(false, "{name} ({e.message})"); false }
+    }
+}
+
+// Round-trip one non-ASCII env pair: set -> get -> enumerate -> remove.
+fun env_roundtrip(key: str, value: str, label: str): void {
+    match Env.set(key, value).await() {
+        Ok(_) => check(true, "{label}: set")
+        Err(e) => { check(false, "{label}: set ({e.message})"); return }
+    }
+    check(Env.get(key) == value, "{label}: get returns the exact UTF-8 value")
+
+    var found = false
+    val vars = Env.vars()
+    var i = 0 as usize
+    while i < vars.len() {
+        val parts = Str.split(vars[i], "=")
+        if parts.len() == 2 && parts[0] == key {
+            found = parts[1] == value
+        }
+        i = i + 1
+    }
+    check(found, "{label}: vars() enumerates the exact pair")
+
+    match Env.remove(key).await() {
+        Ok(_) => check(true, "{label}: remove")
+        Err(e) => check(false, "{label}: remove ({e.message})")
+    }
+    check(Env.get(key) == "", "{label}: get after remove is empty")
+}
+
+fun main(): void {
+    println("=== Unicode correctness (UTF-8 boundary) ===")
+
+    // ── Env: CJK key/value + emoji (surrogate pairs / 4-byte UTF-8) ──
+    env_roundtrip("FROND_ENC_键", "值_日本語_テスト", "env CJK")
+    env_roundtrip("FROND_ENC_emoji", "🚀🎯𝔘𝔫𝔦", "env emoji")
+
+    // ── cross-boundary fixture: this file was created by a wide-char-native
+    // tool with its TRUE name (correct UTF-16 on disk, committed with the
+    // suite). Any ANSI-API path mangles it on read — this is the boundary
+    // self-play round-trips can never catch.
+    val fixture_name = "enc_fixture_ファイル🚀.txt"
+    var fixture_seen = false
+    match Dir.list(Path.from(".")).await() {
+        Ok(entries) => {
+            var i = 0 as usize
+            while i < entries.len() {
+                if entries[i].name == fixture_name { fixture_seen = true }
+                i = i + 1
+            }
+        }
+        Err(e) => check(false, "Dir.list with the true-name fixture ({e.message})")
+    }
+    check(fixture_seen, "Dir.list reads the true-name fixture verbatim")
+    if fixture_seen {
+        match Fs.read_file(Path.from(fixture_name)).await() {
+            Ok(s) => check(s == "fixture", "fixture content readable through its true name")
+            Err(e) => check(false, "read fixture through true name ({e.message})")
+        }
+    }
+
+    // ── io: non-ASCII directory + file names in a fresh local dir ──
+    val base = Path.from("enc_test_目录🎯")
+    // Best-effort pre-clean of a stale run (entries then the dir itself).
+    pre_clean(base)
+
+    if !check_void(Dir.create(base).await(), "Dir.create CJK+emoji dir") { summary(); return }
+
+    val file_path = base.join_str("文件_日本語_🚀.txt")
+    val text = "こんにちは world 🌍 — UTF-8 内容"
+    var wrote = false
+    match Fs.write_file(file_path, text).await() {
+        Ok(_) => { check(true, "write_file CJK path"); wrote = true }
+        Err(e) => check(false, "write_file CJK path ({e.message})")
+    }
+
+    if wrote {
+        match Fs.read_file(file_path).await() {
+            Ok(back) => check(back == text, "file content round-trips exactly")
+            Err(e) => check(false, "read_file CJK path ({e.message})")
+        }
+
+        match Fs.exists(file_path).await() {
+            Ok(b) => check(b, "Fs.exists CJK path")
+            Err(e) => check(false, "Fs.exists CJK path ({e.message})")
+        }
+
+        val copied = base.join_str("копия_文件.txt")
+        check_void(Fs.copy_file(file_path, copied).await(), "copy_file CJK paths")
+
+        val renamed = base.join_str("renamed_ファイル.txt")
+        check_void(File.rename(copied, renamed).await(), "rename CJK path")
+        check_void(Fs.chmod(renamed, 0o644).await(), "chmod CJK path")
+    }
+
+    // Dir.list must enumerate the non-ASCII names verbatim.
+    var names: str[] = []
+    match Dir.list(base).await() {
+        Ok(entries) => {
+            check(entries.len() == 2, "Dir.list sees both entries (got {entries.len()})")
+            var i = 0 as usize
+            while i < entries.len() {
+                names = names ++ [entries[i].name]
+                i = i + 1
+            }
+        }
+        Err(e) => check(false, "Dir.list CJK dir ({e.message})")
+    }
+    if names.len() == 2 {
+        val want1 = "文件_日本語_🚀.txt"
+        val want2 = "renamed_ファイル.txt"
+        var ok1 = false
+        var ok2 = false
+        var i = 0 as usize
+        while i < names.len() {
+            if names[i] == want1 { ok1 = true }
+            if names[i] == want2 { ok2 = true }
+            i = i + 1
+        }
+        check(ok1 && ok2, "Dir.list names verbatim (got {names[0]} / {names[1]})")
+    }
+
+    // Cleanup: remove each entry, then the base dir; verify gone.
+    var i = 0 as usize
+    while i < names.len() {
+        check_void(File.remove(base.join_str(names[i])).await(), "remove CJK entry {i}")
+        i = i + 1
+    }
+    check_void(Dir.remove(base).await(), "Dir.remove CJK base")
+    match Fs.exists(base).await() {
+        Ok(b) => check(!b, "base dir gone after cleanup")
+        Err(e) => check(false, "exists after cleanup ({e.message})")
+    }
+
+    summary()
+}
+
+fun pre_clean(base: Path): void {
+    match Dir.list(base).await() {
+        Ok(entries) => {
+            var i = 0 as usize
+            while i < entries.len() {
+                val _ = File.remove(base.join_str(entries[i].name)).await()
+                i = i + 1
+            }
+        }
+        Err(_) => {}
+    }
+    val _ = Dir.remove(base).await()
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

@@ -81,6 +81,15 @@ fun main(): void {
     val r4 = test_while_if_str_concat()
     // 正确值按算法推导：S + (r0: M,L) + (r1: M,L) + (r2: M,~) + (r3: M,~) = "SMLMLM~M~"（len=10）。
     // 原期望 "SMLMLM~~" 漏掉了 r=3 的 "M"，疑似把历史 bug 输出误写为期望值；2026-08-14 修正。
-    println("test_while_if_str_concat: \"" + r4 + "\" (expected: SMLMLM~M~, len=10)")
+    println("test_while_if_str_concat: \"" + r4 + "\" (expected: SMLMLM~M~, len=9)")
     println("  len=" + (r4.bytes().len()) as str)
+
+    // 转正断言(2026-08-18):四个写回形态逐一校验("SMLMLM~M~" 9 字符——
+    // 旧注释 len=10 系笔误,2026-08-14 修期望串时未同步)
+    val ok = r1 == "XaXaXaXa" && r2 == "XaXaXaXb" && r3 == 45 && r4 == "SMLMLM~M~"
+    if ok {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: 1 FAILED")
+    }
 }

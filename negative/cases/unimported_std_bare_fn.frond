@@ -1,0 +1,5 @@
+// EXPECT: undefined variable 'fnv1a'
+fun main(): void {
+    val h = fnv1a(42)
+    println("{h}")
+}

@@ -1,0 +1,154 @@
+// 差分回归:相等语义的路径统一契约。
+// `==` 在引擎里有两条编译路径(专用标量 CF / 泛型深比较 value_equals),
+// match 字面量模式还有第三条路由(scrutinee 宽度)。本套件锁定:
+// 对同一对值,裸比较 / 泛型函数 / record 深比较 / 数组深比较 / 泛型record字段
+// / nullable 包裹 / match 模式,七种形态必须给出同一答案。
+// 锚定 bug:i64 4294967296 曾错误命中模式 0(eq_i32 双侧截断);
+// 深比较浮点曾按位(-0.0 != 0.0)而裸比较 IEEE(真)。
+fun eq_generic<T>(a: T, b: T): bool { a == b }
+
+type BoxF64 = BoxF64(v: f64)
+type BoxF32 = BoxF32(v: f32)
+type BoxI64 = BoxI64(v: i64)
+type BoxStr = BoxStr(v: str)
+type GBox<K> = GBox(v: K)
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+// f64 七形态:裸/泛型/record/数组/软类型字段/nullable
+fun agree_f64(x: f64, y: f64): bool {
+    val a = x == y
+    val b = eq_generic(x, y)
+    val c = BoxF64(x) == BoxF64(y)
+    val d = [x] == [y]
+    val e = GBox(x).v == y
+    val p: f64? = x
+    val q: f64? = y
+    val f = p == q
+    a == b && b == c && c == d && d == e && e == f
+}
+
+fun agree_f32(x: f32, y: f32): bool {
+    val a = x == y
+    val b = eq_generic(x, y)
+    val c = BoxF32(x) == BoxF32(y)
+    val d = [x] == [y]
+    val e = GBox(x).v == y
+    val p: f32? = x
+    val q: f32? = y
+    val f = p == q
+    a == b && b == c && c == d && d == e && e == f
+}
+
+fun agree_i64(x: i64, y: i64): bool {
+    val a = x == y
+    val b = eq_generic(x, y)
+    val c = BoxI64(x) == BoxI64(y)
+    val d = [x] == [y]
+    val e = GBox(x).v == y
+    val p: i64? = x
+    val q: i64? = y
+    val f = p == q
+    a == b && b == c && c == d && d == e && e == f
+}
+
+fun agree_str(x: str, y: str): bool {
+    val a = x == y
+    val b = eq_generic(x, y)
+    val c = BoxStr(x) == BoxStr(y)
+    val d = [x] == [y]
+    val e = GBox(x).v == y
+    val p: str? = x
+    val q: str? = y
+    val f = p == q
+    a == b && b == c && c == d && d == e && e == f
+}
+
+fun main(): void {
+    // ── IEEE 事实锚(不只是内部一致,还要是对的)──────────────
+    check(0.0 == -0.0, "IEEE: 0.0 == -0.0")
+    check((0.0 / 0.0) == (0.0 / 0.0) == false, "IEEE: NaN != NaN")
+    check((-0.0 as f32) == (0.0 as f32), "IEEE: f32 ±0 equal")
+
+    // ── f64 七形态一致 ─────────────────────────────────────
+    check(agree_f64(0.0, 0.0), "f64 0.0/0.0 agree")
+    check(agree_f64(0.0, -0.0), "f64 0.0/-0.0 agree")
+    check(agree_f64(-0.0, 0.0), "f64 -0.0/0.0 agree")
+    check(agree_f64(1.5, 1.5), "f64 1.5/1.5 agree")
+    check(agree_f64(1.5, -1.5), "f64 1.5/-1.5 agree")
+    check(agree_f64(0.0 / 0.0, 0.0 / 0.0), "f64 NaN/NaN agree")
+    check(agree_f64(0.0, 0.0 / 0.0), "f64 0.0/NaN agree")
+
+    // ── f32 七形态一致 ─────────────────────────────────────
+    check(agree_f32(0.0 as f32, -0.0 as f32), "f32 ±0 agree")
+    check(agree_f32(1.5 as f32, 1.5 as f32), "f32 1.5 agree")
+    check(agree_f32(1.5 as f32, -1.5 as f32), "f32 ±1.5 agree")
+
+    // ── i64 七形态一致(含截断曾经的危险值)────────────────
+    check(agree_i64(4294967296, 4294967296), "i64 2^32 agree")
+    check(agree_i64(4294967296, 0), "i64 2^32 vs 0 agree")
+    check(agree_i64(10000000000, 10000000000), "i64 1e10 agree")
+    check(agree_i64(-9223372036854775808 as i64, -9223372036854775808 as i64), "i64 MIN agree")
+
+    // ── str 七形态一致 ─────────────────────────────────────
+    check(agree_str("a", "a"), "str same agree")
+    check(agree_str("a", "b"), "str diff agree")
+    check(agree_str("", ""), "str empty agree")
+
+    // ── nullable 的 Null 判别 ──────────────────────────────
+    val n: f64? = null
+    val z: f64? = 0.0
+    check(n == n, "null == null")
+    check((n == z) == false, "null != 0.0")
+    check(z == 0.0, "f64? wraps 0.0 == bare 0.0")
+    val ni: i64? = 42
+    check(ni == 42, "i64? == 42 (cross-tag promotion)")
+
+    // ── match 模式路由(scrutinee 宽度)──────────────────────
+    val big: i64 = 4294967296
+    val m1 = match big {
+        0 => "WRONG-HIT",
+        4294967296 => "right",
+        _ => "miss"
+    }
+    check(m1 == "right", "i64 pattern: no 2^32/0 truncation hit")
+    check((match big { 0 => true, _ => false }) == (big == 0), "i64 pattern 0 == bare eq")
+    check((match big { 4294967296 => true, _ => false }) == (big == 4294967296), "i64 pattern big == bare eq")
+
+    // 软类型 scrutinee(泛型 record 字段)走泛型数值比较
+    val soft = GBox(10000000000 as i64)
+    check(match soft.v { 10000000000 => true, _ => false }, "soft i64 pattern hit at width")
+    check((match soft.v { 0 => true, _ => false }) == (soft.v == 0), "soft i64 pattern 0 == bare eq")
+
+    // 浮点模式与裸比较一致
+    check(match 0.0 { 0.0 => true, _ => false }, "f64 pattern 0.0")
+    check(match -0.0 { 0.0 => true, _ => false }, "f64 pattern: -0.0 matches 0.0 (IEEE)")
+    check((match -0.5 { 0.5 => true, _ => false }) == false, "f64 pattern: -0.5 misses 0.5")
+    check((match -0.0 as f32 { 0.0f32 => true, _ => false }) == ((-0.0 as f32) == (0.0 as f32)), "f32 suffix pattern == bare eq")
+    check(match 0.5 { 0.5 => true, _ => false }, "soft f64 pattern 0.5")
+
+    // u8 / 小整型模式
+    val ub: u8 = 200
+    check(match ub { 200 => true, _ => false }, "u8 pattern 200")
+    check((match ub { 0 => true, _ => false }) == false, "u8 pattern 0 miss")
+
+    summary()
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

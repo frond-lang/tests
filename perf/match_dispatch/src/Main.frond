@@ -16,7 +16,7 @@ fun main(): void {
     println("=== Match Dispatch Benchmark ===")
 
     var sum: i32 = 0
-    val t0 = Instant.now().nanos as i64
+    val t0 = Instant.now().ns() as i64
     var i: i32 = 0
     while i < 1000000 {
         val op = match i % 4 {
@@ -28,7 +28,7 @@ fun main(): void {
         sum = sum + compute(op, i, 3)
         i = i + 1
     }
-    val t1 = Instant.now().nanos as i64
+    val t1 = Instant.now().ns() as i64
     println("sum = {sum}")
     val elapsed = (t1 - t0) / 1000000i64
     println("elapsed: {elapsed} ms")

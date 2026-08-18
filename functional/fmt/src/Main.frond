@@ -1,5 +1,6 @@
 // 功能验证:std.core.fmt — 整数进制格式化(radix 2..36、小写、负号)、
-// dec/hex/oct/bin 便捷函数、pad_left/pad_right 宽度填充;
+// dec/hex/oct/bin 便捷函数、pad_left/pad_right 宽度填充、
+// 非法输入(基数越界 / 非整型)抛 FmtError 而非静默 "";
 // 根库引入形态(import std.core 一并带出 Fmt)由 core_module 套件锁定。
 import std.core.fmt
 
@@ -14,50 +15,65 @@ fun check(cond: bool, name: str): void {
     }
 }
 
+// dec/hex/oct/bin/radix 返回 Throw<str, FmtError>:成功解出 str,
+// 失败折叠为 "<message>"(下面的用例断言它以 "<" 起头)。
+fun unwrap(r: Throw<str, FmtError>): str {
+    match r {
+        Ok(v) => v,
+        Err(e) => "<{e.message}>"
+    }
+}
+
 fun main(): void {
     // ── 十进制(dec 与 parse 对偶)────────────────────────────
-    check(Fmt.dec(0) == "0", "dec zero")
-    check(Fmt.dec(42) == "42", "dec positive")
-    check(Fmt.dec(-42) == "-42", "dec negative")
-    check(Fmt.dec(-9223372036854775808 as i64) == "-9223372036854775808", "dec I64.MIN")
-    check(Fmt.dec(18446744073709551615 as u64) == "18446744073709551615", "dec U64.MAX")
+    check(unwrap(Fmt.dec(0)) == "0", "dec zero")
+    check(unwrap(Fmt.dec(42)) == "42", "dec positive")
+    check(unwrap(Fmt.dec(-42)) == "-42", "dec negative")
+    check(unwrap(Fmt.dec(-9223372036854775808 as i64)) == "-9223372036854775808", "dec I64.MIN")
+    check(unwrap(Fmt.dec(18446744073709551615 as u64)) == "18446744073709551615", "dec U64.MAX")
 
     // ── hex / oct / bin ──────────────────────────────────────
-    check(Fmt.hex(255) == "ff", "hex lowercase")
-    check(Fmt.hex(-255) == "-ff", "hex negative")
-    check(Fmt.hex(3735928559 as u32) == "deadbeef", "hex deadbeef")
-    check(Fmt.hex(1) == "1", "hex one")
-    check(Fmt.oct(8) == "10", "oct eight")
-    check(Fmt.oct(511) == "777", "oct 511")
-    check(Fmt.oct(-8) == "-10", "oct negative")
-    check(Fmt.bin(5) == "101", "bin five")
-    check(Fmt.bin(0) == "0", "bin zero")
-    check(Fmt.bin(-2) == "-10", "bin negative")
+    check(unwrap(Fmt.hex(255)) == "ff", "hex lowercase")
+    check(unwrap(Fmt.hex(-255)) == "-ff", "hex negative")
+    check(unwrap(Fmt.hex(3735928559 as u32)) == "deadbeef", "hex deadbeef")
+    check(unwrap(Fmt.hex(1)) == "1", "hex one")
+    check(unwrap(Fmt.oct(8)) == "10", "oct eight")
+    check(unwrap(Fmt.oct(511)) == "777", "oct 511")
+    check(unwrap(Fmt.oct(-8)) == "-10", "oct negative")
+    check(unwrap(Fmt.bin(5)) == "101", "bin five")
+    check(unwrap(Fmt.bin(0)) == "0", "bin zero")
+    check(unwrap(Fmt.bin(-2)) == "-10", "bin negative")
 
     // ── radix 2..36 全范围 ──────────────────────────────────
-    check(Fmt.radix(35, 36) == "z", "radix36 digit z")
-    check(Fmt.radix(1295, 36) == "zz", "radix36 zz")
-    check(Fmt.radix(1270, 36) == "za", "radix36 za")
-    check(Fmt.radix(10, 1) == "", "radix base 1 rejected")
-    check(Fmt.radix(10, 37) == "", "radix base 37 rejected")
+    check(unwrap(Fmt.radix(35, 36)) == "z", "radix36 digit z")
+    check(unwrap(Fmt.radix(1295, 36)) == "zz", "radix36 zz")
+    check(unwrap(Fmt.radix(1270, 36)) == "za", "radix36 za")
+
+    // ── 非法输入抛 FmtError(不再静默 "")────────────────────
+    check(match Fmt.radix(10, 1) { Ok(_) => false, Err(_) => true }, "radix base 1 rejected (throw)")
+    check(match Fmt.radix(10, 37) { Ok(_) => false, Err(_) => true }, "radix base 37 rejected (throw)")
+    check(match Fmt.dec(1.5) { Ok(_) => false, Err(_) => true }, "dec on f64 rejected (throw)")
+    check(match Fmt.hex(true) { Ok(_) => false, Err(_) => true }, "hex on bool rejected (throw)")
+    check(match Fmt.bin("5") { Ok(_) => false, Err(_) => true }, "bin on str rejected (throw)")
+    check(unwrap(Fmt.dec(1.5)).bytes()[0] == 60, "unwrap folds Err to \"<message>\"")
 
     // ── 泛型分发:每个整型槽位 ───────────────────────────────
-    check(Fmt.hex(255 as u8) == "ff", "u8 arm")
-    check(Fmt.bin(65535 as u16) == "1111111111111111", "u16 arm")
-    check(Fmt.oct(4294967295 as u32) == "37777777777", "u32 arm")
-    check(Fmt.hex(18446744073709551615 as u64) == "ffffffffffffffff", "u64 arm")
-    check(Fmt.hex(340282366920938463463374607431768211455 as u128) == "ffffffffffffffffffffffffffffffff", "u128 arm")
-    check(Fmt.dec(42 as usize) == "42", "usize arm")
-    check(Fmt.hex(-1 as i8) == "-1", "i8 arm")
-    check(Fmt.dec(32767 as i16) == "32767", "i16 arm")
-    check(Fmt.oct(64 as i32) == "100", "i32 arm")
-    check(Fmt.dec(42 as isize) == "42", "isize arm")
+    check(unwrap(Fmt.hex(255 as u8)) == "ff", "u8 arm")
+    check(unwrap(Fmt.bin(65535 as u16)) == "1111111111111111", "u16 arm")
+    check(unwrap(Fmt.oct(4294967295 as u32)) == "37777777777", "u32 arm")
+    check(unwrap(Fmt.hex(18446744073709551615 as u64)) == "ffffffffffffffff", "u64 arm")
+    check(unwrap(Fmt.hex(340282366920938463463374607431768211455 as u128)) == "ffffffffffffffffffffffffffffffff", "u128 arm")
+    check(unwrap(Fmt.dec(42 as usize)) == "42", "usize arm")
+    check(unwrap(Fmt.hex(-1 as i8)) == "-1", "i8 arm")
+    check(unwrap(Fmt.dec(32767 as i16)) == "32767", "i16 arm")
+    check(unwrap(Fmt.oct(64 as i32)) == "100", "i32 arm")
+    check(unwrap(Fmt.dec(42 as isize)) == "42", "isize arm")
 
     // ── i128 边界(MIN 的取模走 neg_mag 半值路径)──────────
-    check(Fmt.dec(170141183460469231731687303715884105727 as i128) == "170141183460469231731687303715884105727", "i128 MAX dec")
-    check(Fmt.dec(-170141183460469231731687303715884105728 as i128) == "-170141183460469231731687303715884105728", "i128 MIN dec")
-    check(Fmt.hex(-170141183460469231731687303715884105728 as i128) == "-80000000000000000000000000000000", "i128 MIN hex")
-    check(Fmt.dec(-5 as i128) == "-5", "neg_mag odd negative")
+    check(unwrap(Fmt.dec(170141183460469231731687303715884105727 as i128)) == "170141183460469231731687303715884105727", "i128 MAX dec")
+    check(unwrap(Fmt.dec(-170141183460469231731687303715884105728 as i128)) == "-170141183460469231731687303715884105728", "i128 MIN dec")
+    check(unwrap(Fmt.hex(-170141183460469231731687303715884105728 as i128)) == "-80000000000000000000000000000000", "i128 MIN hex")
+    check(unwrap(Fmt.dec(-5 as i128)) == "-5", "neg_mag odd negative")
 
     // ── 宽度填充 ─────────────────────────────────────────────
     check(Fmt.pad_left("ff", 4, 48) == "00ff", "pad_left zero fill")
@@ -65,7 +81,7 @@ fun main(): void {
     check(Fmt.pad_left("", 2, 48) == "00", "pad_left empty")
     check(Fmt.pad_right("7", 3, 48) == "700", "pad_right fill")
     check(Fmt.pad_right("abcde", 3, 48) == "abcde", "pad_right no-op")
-    check(Fmt.pad_left(Fmt.hex(255), 4, 48) == "00ff", "compose hex + pad")
+    check(Fmt.pad_left(unwrap(Fmt.hex(255)), 4, 48) == "00ff", "compose hex + pad")
 
     summary()
 }

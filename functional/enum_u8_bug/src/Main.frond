@@ -35,4 +35,12 @@ fun main(): void {
         0x09u8 => println("t matched 0x09 (correct)"),
         _ => println("t matched default")
     }
+
+    // 转正断言(2026-08-18):u8 相等/字面量 match 全部按值路由
+    val ok = b == 0x62u8 && b != 0x61u8 && b != 0x09u8 && b == 98u8 && b != 9u8 && t == 0x09u8 && t != 0x62u8
+    if ok {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: 1 FAILED")
+    }
 }

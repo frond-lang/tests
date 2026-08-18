@@ -1,0 +1,5 @@
+// EXPECT: undefined variable 'Fmt'
+fun main(): void {
+    val s = Fmt.dec(42)
+    println("{s}")
+}

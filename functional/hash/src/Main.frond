@@ -5,6 +5,9 @@
 import std.core.hash
 import std.collections
 
+// 记录键嵌浮点:±0.0 归一化必须透过打印形态覆盖嵌套字段
+type Pt = Pt(x: f64, y: f64)
+
 var failures: i32 = 0
 
 fun check(cond: bool, name: str): void {
@@ -38,11 +41,33 @@ fun main(): void {
     val notbytes: i32[] = [1, 2, 3]
     check(Crc32.crc32(notbytes) == (0 as u32), "i32[] still sentinel")
 
+    // ── 空数组:type_name 从值推导,空数组报 "array"(非 "u8[]")──
+    // 空与非空 u8[] 必须同一语义:都按空字节序列摘要(offset basis),
+    // 不得静默落哨兵 0(与 fnv1a_bytes/crc32_bytes 的空输入一致)。
+    val none: u8[] = []
+    check(Hash.fnv1a(none) == 0xcbf29ce484222325, "fnv1a empty u8[] = offset basis")
+    check(Hash.fnv1a(none) == Hash.fnv1a_bytes(none), "fnv1a empty u8[] == fnv1a_bytes(empty)")
+    check(Hash.fnv1a(none) == Hash.fnv1a(""), "fnv1a empty u8[] == fnv1a(\"\")")
+    val none_i32: i32[] = []
+    check(Hash.fnv1a(none_i32) == 0xcbf29ce484222325, "fnv1a empty i32[] = empty byte digest")
+    check(Crc32.crc32(none) == Crc32.crc32_bytes(none), "crc32 empty u8[] consistent")
+    check(Adler32.adler32(none) == Adler32.adler32_bytes(none), "adler32 empty u8[] consistent")
+    check(Xxh64.xxh64(none) == Xxh64.xxh64_bytes(none), "xxh64 empty u8[] consistent")
+
     // ── key:collections 泛型键方案 ─────────────────────────
     check(Hash.key(42) == Hash.fnv1a("42"), "key(i64) = fnv1a of printed form")
     check(Hash.key(42) == Hash.key(42), "key deterministic")
     check(Hash.key(42) != Hash.key(43), "nearby keys differ")
     check(Hash.key("x") == Hash.key("x"), "key on str deterministic")
+
+    // ── key ±0.0 归一化:IEEE 相等(-0.0 == 0.0)必须哈希相等 ──
+    // 打印形态区分 "-0"/"0",不归一化则 set(-0.0) 后 get(0.0) 落错桶。
+    check(Hash.key(0.0) == Hash.key(-0.0), "key: -0.0 and 0.0 hash equal (f64)")
+    check(Hash.key(-0.0 as f32) == Hash.key(0.0 as f32), "key: -0.0 and 0.0 hash equal (f32)")
+    check(Hash.key(0.5) != Hash.key(-0.5), "key: -0.5 keeps its sign")
+    check(Hash.key(-10.0) != Hash.key(10.0), "key: -10.0 distinct from 10.0")
+    check(Hash.key(Pt(0.0, 1.5)) == Hash.key(Pt(-0.0, 1.5)), "key: record field -0.0 normalized")
+    check(Hash.key("-0") == Hash.key("0"), "key: str \"-0\" collides with \"0\" by design")
 
     // ── mix_i64:fmix64 混合器 ──────────────────────────────
     check(Hash.mix_i64(0) == 0, "fmix64(0) = 0 (fixed point)")
@@ -57,6 +82,11 @@ fun main(): void {
     m.set("fnv", 1)
     m.set("fmix", 2)
     check(m.get("fnv") == 1 && m.get("fmix") == 2, "HashMap over Hash.key")
+    // 端到端:哈希契约违反会让 set(-0.0) 后 get(0.0) miss
+    val fz = HashMap.new()
+    fz.set(-0.0, "neg")
+    check(fz.has(0.0) && fz.has(-0.0), "HashMap: set(-0.0), has(±0.0)")
+    check(fz.get(0.0) == "neg", "HashMap: set(-0.0), get(0.0)")
     val im = IntMap.new()
     im.set(-1, 10)
     im.set(-2, 20)

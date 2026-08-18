@@ -221,4 +221,5 @@ fun main(): void {
     check(sum_alt == 0 + 10 + 20, "while loop send/recv alternate sum=30")
 
     summary()
-}
+}import std.time
+

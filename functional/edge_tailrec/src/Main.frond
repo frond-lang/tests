@@ -36,4 +36,13 @@ fun main(): void {
     println("fib(0) = {fib(0)}")
     println("fib(1) = {fib(1)}")
     println("fib(10) = {fib(10)}")
+
+    // 转正判定(2026-08-18):尾递归 fact/fib 与展开值一致
+    val ok = fact(1) == 1 && fact(5) == 120 && fact(10) == 3628800
+        && fib(0) == 0 && fib(1) == 1 && fib(10) == 55
+    if ok {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: 1 FAILED")
+    }
 }

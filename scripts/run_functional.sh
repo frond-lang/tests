@@ -13,11 +13,12 @@ if [ ! -f "$FROND" ]; then
     exit 2
 fi
 
-# 2026-08-15 引擎性能优化前的基线已知失败（豁免）：
-# - edge_ffi_inline: FFI 重塑进行中，@extern/内嵌C 已限定 stdlib（编译期拒绝，已知状态）
-# - enum_u8_bug / edge_nested_types / str_writeback_bug / edge_tailrec: 旧式测试无 RESULT summary 行
+# 基线已知失败（豁免）：当前为空。
+# （2026-08-18 清理：edge_ffi_inline 与负向 user_extern_forbidden 断言重复，
+#  套件删除；enum_u8_bug/edge_nested_types/str_writeback_bug/edge_tailrec
+#  四个旧式套件加 RESULT 判定转正撤豁免。）
 # 门禁口径：新增失败 = 失败。豁免清单外的任何 FAIL 都算。
-KNOWN_BASELINE_FAIL="edge_ffi_inline enum_u8_bug edge_nested_types str_writeback_bug edge_tailrec"
+KNOWN_BASELINE_FAIL=""
 
 pass=0
 fail=0

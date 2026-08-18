@@ -1,0 +1,165 @@
+// 功能验证：std.core.mem — T[] 通用容器原语
+// fill/copy/swap/reverse/repeat/equal 走 u8[] C 快路径与泛型纯 Frond 兜底两条路；
+// clone 为 reflect 深拷贝（数组/Adt/Record 递归，不可变叶子与运行时身份共享）。
+// 性能锚点防"退化回解释执行"。2026-08-18 SoA 启用后重测收紧：
+// fill 0.28ms / copy 0.62ms / clone 0.20ms（SoA 单源化后；锚点留 ~10× 余量防 CI 抖动）。
+import std.core.mem
+import std.time.Instant
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+type Grid = Grid(rows: u8[][])
+
+fun main(): void {
+    println("=== std.core.mem ===")
+
+    // ── fill ─────────────────────────────────────────────
+    val a: u8[] = [1, 2, 3]
+    Mem.fill(a, 7)
+    check(a[0] == 7 && a[1] == 7 && a[2] == 7, "fill u8 (C memset)")
+
+    val b: i64[] = [1, 2, 3]
+    Mem.fill(b, 9)
+    check(b[0] == 9 && b[1] == 9 && b[2] == 9, "fill i64 (generic loop)")
+
+    val strs: str[] = ["a", "b"]
+    Mem.fill(strs, "z")
+    check(strs[0] == "z" && strs[1] == "z", "fill str[]")
+
+    // ── copy ─────────────────────────────────────────────
+    val c: u8[] = [1, 2, 3, 4, 5]
+    Mem.copy(c, 1, c, 0, 3)
+    check(c[0] == 1 && c[1] == 1 && c[2] == 2 && c[3] == 3 && c[4] == 5,
+          "copy u8 overlap forward (memmove)")
+
+    val d: u8[] = [1, 2, 3, 4, 5]
+    Mem.copy(d, 0, d, 1, 3)
+    check(d[0] == 2 && d[1] == 3 && d[2] == 4 && d[3] == 4 && d[4] == 5,
+          "copy u8 overlap backward (memmove)")
+
+    val dst: u8[] = [0, 0, 0, 0]
+    val src: u8[] = [9, 8, 7]
+    Mem.copy(dst, 1, src, 0, 3)
+    check(dst[0] == 0 && dst[1] == 9 && dst[2] == 8 && dst[3] == 7, "copy u8 separate")
+
+    val gd: i64[] = [0, 0, 0, 0]
+    val gs: i64[] = [4, 5, 6]
+    Mem.copy(gd, 1, gs, 0, 3)
+    check(gd[1] == 4 && gd[2] == 5 && gd[3] == 6, "copy i64 generic")
+
+    Mem.copy(dst, dst.len(), src, 0, 0 as usize)
+    check(true, "copy zero-count at endpoint is legal")
+
+    // ── swap ─────────────────────────────────────────────
+    val e: u8[] = [1, 2, 3]
+    Mem.swap(e, 0, 2)
+    check(e[0] == 3 && e[2] == 1, "swap u8 (C)")
+    Mem.swap(e, 1, 1)
+    check(e[1] == 2, "swap same index no-op")
+
+    val f: str[] = ["x", "y", "z"]
+    Mem.swap(f, 0, 2)
+    check(f[0] == "z" && f[2] == "x", "swap str[] generic")
+
+    // ── reverse ──────────────────────────────────────────
+    val g: u8[] = [1, 2, 3, 4]
+    Mem.reverse(g)
+    check(g[0] == 4 && g[1] == 3 && g[2] == 2 && g[3] == 1, "reverse u8 (C)")
+
+    val h: i64[] = [1, 2, 3]
+    Mem.reverse(h)
+    check(h[0] == 3 && h[1] == 2 && h[2] == 1, "reverse i64 generic")
+
+    val one: u8[] = [5]
+    Mem.reverse(one)
+    check(one[0] == 5, "reverse single element")
+
+    // ── repeat ───────────────────────────────────────────
+    val r = Mem.repeat([1, 2], 3)
+    check(r.len() == 6 && r[0] == 1 && r[1] == 2 && r[2] == 1 && r[5] == 2, "repeat pattern")
+    check(Mem.repeat([1], 0).len() == 0, "repeat count=0 empty")
+    check(Mem.repeat([], 5).len() == 0, "repeat empty pattern")
+
+    val rs = Mem.repeat(["ab"], 2)
+    check(rs.len() == 2 && rs[0] == "ab", "repeat str[]")
+
+    // ── equal ────────────────────────────────────────────
+    check(Mem.equal([1, 2, 3], [1, 2, 3]), "equal u8 same (memcmp)")
+    check(!Mem.equal([1, 2, 3], [1, 2, 4]), "equal u8 diff")
+    check(!Mem.equal([1, 2], [1, 2, 3]), "equal u8 length mismatch")
+    check(Mem.equal(["a", "b"], ["a", "b"]), "equal str[] generic")
+    check(!Mem.equal(["a"], ["b"]), "equal str[] diff")
+
+    // ── clone (deep copy) ────────────────────────────────
+    val grid: u8[][] = [[1, 2], [3, 4]]
+    val gc = Mem.clone(grid)
+    gc[0][0] = 99
+    check(grid[0][0] == 1 && gc[0][0] == 99, "clone nested array independent")
+    gc[0] = [7, 7]
+    check(grid[0][0] == 1, "clone outer rows independent")
+
+    val gr = Grid([[5]])
+    val grc = Mem.clone(gr)
+    grc.rows[0][0] = 55
+    check(gr.rows[0][0] == 5 && grc.rows[0][0] == 55, "clone Adt array field independent")
+
+    check(Mem.clone(42) == 42, "clone scalar")
+    check(Mem.clone("abc") == "abc", "clone str shares (immutable)")
+
+    val alias = grid
+    alias[1][0] = 5
+    check(grid[1][0] == 5, "plain assignment still shares (contrast anchor)")
+
+    val m: i64[] = [1, 2]
+    val mc = m.clone()
+    mc[0] = 9
+    check(m[0] == 1, "method form .clone() deep copy")
+
+    // ── 性能锚点（防退化回解释执行）──────────────────────
+    println("")
+    println("  perf anchors (release):")
+    val n = 1048576 as usize
+    val buf: u8[] = [0, ..n]
+    var t0 = Instant.now()
+    Mem.fill(buf, 7)
+    var t1 = Instant.now()
+    val fill_us = t1.duration_since(t0).as_micros()
+    println("    fill 1MB:    {fill_us} us")
+    check(fill_us < 5000, "perf: fill 1MB < 5ms")
+
+    val src1m: u8[] = [9, ..n]
+    t0 = Instant.now()
+    Mem.copy(buf, 0, src1m, 0, n)
+    t1 = Instant.now()
+    val copy_us = t1.duration_since(t0).as_micros()
+    println("    copy 1MB:    {copy_us} us")
+    check(copy_us < 10000, "perf: copy 1MB < 10ms")
+
+    t0 = Instant.now()
+    val cl = Mem.clone(buf)
+    t1 = Instant.now()
+    val clone_us = t1.duration_since(t0).as_micros()
+    println("    clone 1MB:   {clone_us} us")
+    check(clone_us < 2000, "perf: clone 1MB < 2ms")
+    check(cl[0] == 9, "perf clone correct")
+
+    summary()
+}

@@ -1,5 +1,6 @@
 // 功能验证：std.io.Fs 管理面（exists / copy_file / chmod / stat_of / Dir.list）
 // 全部走 async io 域风格 + Throw 一等值断言。
+import std.core
 import std.io.Fs
 import std.io.File
 import std.io.Dir
@@ -61,7 +62,7 @@ fun copy_checks(): void {
         Err(e) => { check(false, "copy: write source ({e.message})"); return }
     }
 
-    check_err(Fs.copy_file(Path.from("fs_test_src.txt"), "fs_test_dst.txt").await(), "copy_file basic")
+    check_err(Fs.copy_file(Path.from("fs_test_src.txt"), Path.from("fs_test_dst.txt")).await(), "copy_file basic")
 
     // NOTE: `match` on an awaited Throw with an early-return Err arm trips an
     // engine match-dispatch bug (tracked); the `?` form is verified working.
@@ -70,7 +71,7 @@ fun copy_checks(): void {
 
     // 覆盖语义：先改目标内容，再 copy 覆盖
     val _ = Fs.write_file(Path.from("fs_test_dst.txt"), "stale").await()
-    check_err(Fs.copy_file(Path.from("fs_test_src.txt"), "fs_test_dst.txt").await(), "copy_file overwrite")
+    check_err(Fs.copy_file(Path.from("fs_test_src.txt"), Path.from("fs_test_dst.txt")).await(), "copy_file overwrite")
     val back2 = Fs.read_file(Path.from("fs_test_dst.txt")).await()?
     check(back2 == "copy-me", "copy_file overwrite content")
 
@@ -79,7 +80,7 @@ fun copy_checks(): void {
     check(st.size == 7u64, "copy_file size matches ({st.size})")
 
     // 复制不存在文件 -> Err
-    match Fs.copy_file(Path.from("definitely_missing_frond_xyz.frond"), "fs_test_dst.txt").await() {
+    match Fs.copy_file(Path.from("definitely_missing_frond_xyz.frond"), Path.from("fs_test_dst.txt")).await() {
         Ok(_) => check(false, "copy missing should fail"),
         Err(_) => check(true, "copy_file missing source -> Err"),
     }

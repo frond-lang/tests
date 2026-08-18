@@ -96,4 +96,10 @@ fun main(): void {
     println("  str + null done")
 
     println("BATCH12 DONE failures={failures}")
+    // 转正判定(2026-08-18)
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
 }

@@ -1,0 +1,7 @@
+// EXPECT: argument type mismatch: cannot pass 'str' where 'Path' is expected
+import std.io.File
+
+fun main(): void {
+    val f = File.open("Root.toml", File.read_only()).await()
+    println("{f}")
+}

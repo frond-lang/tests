@@ -1,0 +1,6 @@
+// EXPECT: no method 'fnv1a' on type 'i32'
+fun main(): void {
+    val x = 42
+    val h = x.fnv1a()
+    println("{h}")
+}
