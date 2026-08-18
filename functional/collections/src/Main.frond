@@ -1,0 +1,308 @@
+// 功能验证:std.collections 四个容器(HashMap/IntMap/HashSet/IntSet)
+// 覆盖:增删改查、更新语义、空串/Unicode/负数键、增长 rehash、
+// 删除后重插、keys/values/items 数量、clear、可空值类型、去重语义。
+import std.collections.HashMap
+import std.collections.IntMap
+import std.collections.HashSet
+import std.collections.IntSet
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// i64 → str 的键名,检验用
+fun key_of(i: i64): str {
+    "k{i}"
+}
+
+fun str_map_basic(): void {
+    println("-- HashMap basic --")
+    val m = HashMap.new()
+    check(m.is_empty(), "new is empty")
+    m.set("a", 1)
+    m.set("b", 2)
+    check(m.len() == 2, "len 2")
+    check((m.get("a") ?? 0) == 1, "get a")
+    check(m.get("zz") == null, "miss null")
+    check(m.has("b") && !m.has("zz"), "has")
+    m.set("a", 10)
+    check(m.len() == 2 && (m.get("a") ?? 0) == 10, "update keeps len")
+    check(m.remove("a"), "remove returns true")
+    check(!m.remove("a"), "remove twice false")
+    check(m.get("a") == null && m.len() == 1, "after remove")
+    m.set("a", 100)
+    check((m.get("a") ?? 0) == 100 && m.len() == 2, "reinsert after remove")
+}
+
+fun str_map_edges(): void {
+    println("-- HashMap edges --")
+    val m = HashMap.new()
+    m.set("", 1)
+    m.set("你好世界", 2)
+    m.set("k1", 3)
+    m.set("k2", 4)
+    check((m.get("") ?? 0) == 1, "empty-string key")
+    check((m.get("你好世界") ?? 0) == 2, "unicode key")
+    check((m.get("k1") ?? 0) == 3 && (m.get("k2") ?? 0) == 4, "ascii keys intact")
+    check(m.keys().len() == 4, "keys count")
+    check(m.values().len() == 4, "values count")
+}
+
+fun str_map_growth(): void {
+    println("-- HashMap growth --")
+    val m = HashMap.new()
+    var i: i64 = 0
+    while i < 1000 {
+        m.set(key_of(i), i * 3)
+        i = i + 1
+    }
+    check(m.len() == 1000, "1000 entries")
+    var ok = true
+    i = 0
+    while i < 1000 {
+        if (m.get(key_of(i)) ?? -1) != i * 3 { ok = false }
+        i = i + 1
+    }
+    check(ok, "all readable after rehash")
+    // 删一半再查另一半
+    i = 0
+    while i < 1000 {
+        if i % 2 == 0 { m.remove(key_of(i)) }
+        i = i + 1
+    }
+    check(m.len() == 500, "after half remove")
+    ok = true
+    i = 0
+    while i < 1000 {
+        if i % 2 == 0 {
+            if m.has(key_of(i)) { ok = false }
+        } else {
+            if (m.get(key_of(i)) ?? -1) != i * 3 { ok = false }
+        }
+        i = i + 1
+    }
+    check(ok, "removed gone, kept intact")
+    m.clear()
+    check(m.is_empty() && !m.has(key_of(1)), "clear")
+}
+
+fun int_map(): void {
+    println("-- IntMap --")
+    val m = IntMap.new()
+    m.set(-1, "neg1")
+    m.set(-2, "neg2")
+    m.set(0, "zero")
+    m.set(9223372036854775807, "max")
+    check((m.get(-1) ?? "?") == "neg1", "negative key -1")
+    check((m.get(-2) ?? "?") == "neg2", "negative key -2 (bit pattern)")
+    check((m.get(0) ?? "?") == "zero", "zero key")
+    check((m.get(9223372036854775807) ?? "?") == "max", "i64 max key")
+    check(m.get(42) == null, "miss null")
+    var i: i64 = 0
+    while i < 500 {
+        m.set(i * 7 - 500, "v")
+        i = i + 1
+    }
+    check(m.len() == 504, "dense spread growth")
+    check((m.get(-500 + 7 * 10) ?? "?") == "v", "probe after growth")
+    check(m.keys().len() == 504, "keys count")
+    check(m.values().len() == 504, "values count")
+}
+
+fun nullable_values(): void {
+    println("-- nullable value type --")
+    val m = HashMap.new()
+    m.set("a", null)
+    m.set("b", 5)
+    check(m.get("a") == null && m.has("a"), "null value stored")
+    check((m.get("b") ?? 0) == 5, "non-null value")
+}
+
+fun str_set(): void {
+    println("-- HashSet --")
+    val s = HashSet.new()
+    check(s.add("x"), "add new true")
+    check(!s.add("x"), "add dup false")
+    check(s.add("y") && s.len() == 2, "len 2")
+    check(s.has("x") && !s.has("z"), "has")
+    check(s.remove("x") && !s.has("x") && s.len() == 1, "remove")
+    var i: i64 = 0
+    while i < 300 {
+        s.add("item{i}")
+        i = i + 1
+    }
+    check(s.len() == 301, "growth + dedup")
+    check(s.items().len() == 301, "items count")
+    s.clear()
+    check(s.is_empty(), "clear")
+}
+
+fun int_set(): void {
+    println("-- IntSet --")
+    val s = IntSet.new()
+    check(s.add(-1) && !s.add(-1), "add/dedup -1")
+    check(s.add(-2) && s.has(-1) && s.has(-2), "distinct negatives")
+    var i: i64 = 0
+    while i < 400 {
+        s.add(i - 200)
+        i = i + 1
+    }
+    check(s.len() == 400, "growth (dedup with -1/-2 in range)")
+    var ok = true
+    i = -200
+    while i < 200 {
+        if !s.has(i) { ok = false }
+        i = i + 1
+    }
+    check(ok, "all present after rehash")
+    check(s.items().len() == 400, "items count")
+}
+
+// 泛型键:record 按内容比较、bool、数组键
+type Pt = Pt(x: i64, y: i64)
+
+fun generic_keys(): void {
+    println("-- generic keys --")
+    val m = HashMap.new()
+    m.set(Pt(1, 2), "a")
+    m.set(Pt(3, 4), "b")
+    check((m.get(Pt(1, 2)) ?? "?") == "a", "record key content-equal")
+    check((m.get(Pt(3, 4)) ?? "?") == "b", "second record key")
+    check(m.get(Pt(9, 9)) == null, "record key miss")
+    m.set(Pt(1, 2), "A")
+    check(m.len() == 2 && (m.get(Pt(1, 2)) ?? "?") == "A", "record key update")
+    check(m.remove(Pt(3, 4)) && m.get(Pt(3, 4)) == null, "record key remove")
+    m.set(true, "yes")
+    m.set([1, 2], "arr")
+    check((m.get(true) ?? "?") == "yes", "bool key")
+    check((m.get([1, 2]) ?? "?") == "arr", "array key")
+    check(m.get([1, 3]) == null, "array key miss")
+
+    val s = HashSet.new()
+    check(s.add(Pt(5, 5)), "set add record")
+    check(!s.add(Pt(5, 5)), "set dedup record content")
+    check(s.has(Pt(5, 5)) && s.len() == 1, "set record has/len")
+}
+
+// Iterator 实现:for-in 直接消费
+fun iterator_checks(): void {
+    println("-- iterators --")
+    val m = HashMap.new()
+    m.set("a", 1)
+    m.set("b", 2)
+    m.set("c", 3)
+    var sum: i64 = 0
+    var count: i64 = 0
+    for e in m.entries() {
+        sum = sum + e.value
+        count = count + 1
+    }
+    check(sum == 6 && count == 3, "map entries for-in")
+    check(m.len() == 3, "iteration does not consume map")
+
+    val im = IntMap.new()
+    im.set(5, 50)
+    im.set(6, 60)
+    var isum: i64 = 0
+    for e in im.entries() {
+        isum = isum + e.key
+    }
+    check(isum == 11, "intmap entries for-in")
+
+    val s = HashSet.new()
+    s.add("x")
+    s.add("y")
+    s.add("z")
+    var sc: i64 = 0
+    for x in s.entries() {
+        sc = sc + 1
+    }
+    check(sc == 3, "set iter for-in")
+
+    val iset = IntSet.new()
+    iset.add(1)
+    iset.add(2)
+    var iset_sum: i64 = 0
+    for x in iset.entries() {
+        iset_sum = iset_sum + x
+    }
+    check(iset_sum == 3, "intset iter for-in")
+
+    // record 键迭代,访问 entry 字段
+    val rm = HashMap.new()
+    rm.set(Pt(1, 2), "a")
+    rm.set(Pt(3, 4), "b")
+    var found: i64 = 0
+    for e in rm.entries() {
+        if e.key.x + e.key.y == 3 { found = found + 1 }
+    }
+    check(found == 1, "record entry field access")
+}
+
+// HashIterator 活语义:while 手动驱动 next()(#104 两层修复后恢复此形式)
+fun mutation_semantics(): void {
+    println("-- mutation during iteration --")
+    val m = HashMap.new()
+    m.set("a", 1)
+    m.set("b", 2)
+    m.set("c", 3)
+    val iter = m.entries()
+    val first = iter.next()
+    check(first != null, "manual next() call")
+
+    // 未访问桶中的更新对迭代器可见
+    m.set("b", 20)
+    var sawNewB = false
+    var cont = true
+    while cont {
+        val nx = iter.next()
+        match nx {
+            null => { cont = false },
+            en => { if en.key == "b" && en.value == 20 { sawNewB = true } }
+        }
+    }
+    check(sawNewB, "in-flight update visible in unvisited bucket")
+
+    // 迭代中途触发扩容:迭代器持旧桶布局安全走完
+    val m2 = HashMap.new()
+    var i: i64 = 0
+    while i < 30 { m2.set("k{i}", i); i = i + 1 }
+    val it2 = m2.entries()
+    val _ = it2.next()
+    var j: i64 = 0
+    while j < 50 { m2.set("new{j}", j); j = j + 1 }
+    var cnt: i64 = 0
+    cont = true
+    while cont {
+        val nx = it2.next()
+        match nx {
+            null => { cont = false },
+            _ => { cnt = cnt + 1 }
+        }
+    }
+    check(cnt >= 30 && cnt < 80, "old layout walked safely after rehash ({cnt})")
+    check(m2.len() == 80, "map kept growing to 80")
+}
+
+fun main(): void {
+    str_map_basic()
+    str_map_edges()
+    str_map_growth()
+    int_map()
+    nullable_values()
+    generic_keys()
+    iterator_checks()
+    mutation_semantics()
+    str_set()
+    int_set()
+    summary()
+}

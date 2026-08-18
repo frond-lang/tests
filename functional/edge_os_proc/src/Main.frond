@@ -6,6 +6,7 @@ import std.os.Env
 import std.os.Info
 import std.os.Os
 import std.io.Path
+import std.core.types.Str
 
 var failures: i32 = 0
 
@@ -244,15 +245,10 @@ fun main(): void {
         } else {
             match Proc.capture_with_options("sh", ["-c", "pwd"], Proc.SpawnOptions(tmp, [])) {
                 Ok(o) => {
-                    val out_b = o.output.bytes()
-                    val cwd_b = cwd_str.bytes()
-                    var same = out_b.len() == cwd_b.len() + 1
-                    var i = 0 as usize
-                    while same && i < cwd_b.len() {
-                        if out_b[i] != cwd_b[i] { same = false }
-                        i = i + 1
-                    }
-                    check(o.exit_code == 0 && same, "capture_with_options cwd honored (pwd output)")
+                    // macOS getcwd() canonicalizes symlinks (/var → /private/var),
+                    // so pwd may print TMPDIR with a /private prefix — same dir.
+                    val pwd = Str.trim_end(o.output)
+                    check(o.exit_code == 0 && (pwd == cwd_str || pwd == "/private" + cwd_str), "capture_with_options cwd honored (pwd output)")
                 },
                 Err(e) => check(false, "capture cwd ({e.message})"),
             }

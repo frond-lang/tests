@@ -1,0 +1,52 @@
+// 回归:单态化实例缓存键的类型哈希曾把 str 与所有复合类型(共享 ValueTag::Ref
+// 的 type_id)哈希成同一个值 —— str 实例创建后,record 调用点命中 str 实例,
+// `==` 被编译成 CF_EQ_STR(record 相等恒 false)。修复后按"family+名字+参数"
+// 结构哈希。本套件锁定该场景及各种混合实例化顺序。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+type P = P(x: i64, y: i64)
+type Q = Q(a: str, b: str)
+
+fun same<T>(a: T, b: T): bool { a == b }
+fun size_of<T>(v: T): i64 { 1 }
+
+fun main(): void {
+    println("-- 混合实例化顺序 --")
+    // str 实例在前(原始 bug 触发顺序)
+    check(same("a", "a"), "str equal")
+    check(!same("a", "b"), "str unequal")
+    val p1 = P(1, 2)
+    val p2 = P(1, 2)
+    val p3 = P(1, 3)
+    check(same(p1, p2), "record equal (after str instance)")
+    check(!same(p1, p3), "record unequal (after str instance)")
+
+    println("-- 标量在前 --")
+    check(same(5i64, 5i64), "i64 equal")
+    check(same(p1, p2), "record equal (after i64 instance)")
+
+    println("-- 两个不同 record 类型 --")
+    val q1 = Q("x", "y")
+    val q2 = Q("x", "y")
+    check(same(q1, q2), "second record type equal")
+    check(same(p1, p2), "first record type still equal")
+
+    println("-- 数组与嵌套 --")
+    check(same([1, 2], [1, 2]), "array equal")
+    check(!same([1, 2], [1, 3]), "array unequal")
+    check(same("z", "z"), "str still equal at end")
+
+    println("-- 实例缓存不串值 --")
+    check(size_of(p1) == 1 && size_of("s") == 1 && size_of(7i64) == 1, "multi-instance sanity")
+    summary()
+}

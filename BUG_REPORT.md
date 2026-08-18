@@ -2447,3 +2447,40 @@
 - **问题**：`AsyncJoinRuntime::entries` 只在 `cleanup_consumed` 被调用时清理已完成且已消费的 entry；`TimerRuntime::fired_set` 只在 `cleanup()` 被调用时清空。但两者均未被调用，长时间运行的程序中这两个集合会无界增长
 - **修复**：
   1. **TimerRuntime**：`is_fired` 改为 `&mut self` 消费式读取（返回 true 时移除条目）；`check_timers` 在派发所有 fired timer 事件后调用 `cleanup()` 清理残余条目（安全：`is_fired` 仅在 `start
+### #104:循环体内调用可变方法的两层问题(2026-08-18,已全部修复)
+
+- **第一层(已修复)**:purity 分析不把引用写(`this.f = v` 隐式糖、`obj.f = v`、`arr[i] = v`、`*r = v`)视为副作用 → 写状态的 `&` 方法(如迭代器的 `&next`)被判 Pure → 调用结果绑定到未使用的 `val` 时整条语句被当死声明消除(调用连同突变一起消失,IR 里无 Call 节点)。同类前科:rand next_u64 内联冻结(#96 族,当时只修了顶层变量)。
+  **修复**:Analyzer 新增 `writes_through_reference`(隐式 this 字段写按 sema 的 `implicit_this` 标志识别,字段/下标/解引用写按 target 形态识别),`is_direct_impure` 引用之;所有可变方法自动 impure,死声明消除/内联/记忆化对其失效。回归:functional 全绿。
+- **第二层(已修复)**:`while cont`(裸变量条件)的 cond 节点复用变量的既有绑定节点,物理上在循环子图范围之外;`reset_condition_tree` 的 DFS 只收集子图内节点 → 第二轮无可重评估节点、就绪队列空、循环静默退出。条件变量每轮都被写的循环因 WriteBack 唤醒 gate 而掩盖;方法体内含 while+return 的调用只是让"本轮条件变量不变"的形状暴露。**修复**(Builder/Loops.rs):范围外的条件节点包一层子图内 CF_SEQ 恒等节点,每轮 reset 后重读槽位当前值再触发 gate —— 与比较节点条件(`while i < 3`,节点天然在子图内)统一。回归:tests/functional/loop_cond_rebind(两层各锁定 + 组合),collections 的 while+next 手动驱动语义测试恢复原形。日志证据链(FROND_DEBUG_CALL/SIGNAL + watchpoint):(1) 方法内 while 的 LoopBody 走 E5 线性路径,`return` 的 compute 返回 NodeResult::Return → WP-C 设置该帧信号 → 逐层正确传播(WP-B/D,fn_id 防护均通过,信号未泄漏);(2) 调用者 LoopBody 第一轮正常完成(signal=None)并 reset_loop_iteration(条件树复位、E3 重派生、调用节点 pending=0 且在 seed 中入队——均已验证正确);(3) **但第二轮 while 帧的条件重评估从未发生(无任何 cond 节点 pop),循环帧队列空、静默完成退出**。怀疑方向:reset 后条件树输入(i 的 WriteBack 链)缺少 notify 唤醒,或 body 含跨函数 Call 时 loop 帧 pending 复位不完整。最小复现:
+  ```frond
+  type W = W(limit: i64, pos: i64) {
+      pub fun &next(): i64? {
+          while pos < limit { pos = pos + 1; return pos }
+          null
+      }
+  }
+  fun main(): void {
+      val w = W(3, 0)
+      var cnt: i64 = 0
+      var cont = true
+      while cont {
+          val nx = w.next()
+          if nx == null { cont = false } else { cnt = cnt + 1 }
+      }
+      // cnt == 1(期望 3);循环外手动连续调用 w.next() 完全正确
+  }
+  ```
+
+
+- **问题**:在 `while` 循环体内对循环外声明的迭代器变量手动调用 `it.next()`(`&` 引用接收者方法),迭代器的可变字段状态(bucket/index)在两次迭代之间不持久——典型表现为只前进一次后恒返回 null。for-in 形式(同一 `&next` 协议)完全正常;循环外连续手动调用也正常。仅"while 循环体内 + 外层 record 变量的引用接收者方法突变"组合触发。
+- **复现**(5 条 map,期望 5 实得 1):
+  ```frond
+  val iter = m.entries()        // 变量名任意,iter 只是 iterator 缩写
+  var cont = true
+  while cont {
+      val nx = iter.next()      // 手动驱动迭代器(for-in 内部也是反复调 next)
+      if nx == null { cont = false }
+  }
+  ```
+- **怀疑方向**:LoopBody 分支子图帧对外层变量的 home 槽位/WriteBack(#100 同族):循环体子图对迭代器 record 的引用在迭代间被重新物化,`&next` 内的字段写回(CF_RECORD_FIELD_SET)落在子图局部副本上,未写回外层帧。
+- **临时规避**:用 for-in 驱动迭代器;collections 测试已按此约定(std/collections 的活语义测试均为 for-in 形式)。

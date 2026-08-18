@@ -1,0 +1,77 @@
+// 回归:#104 两层修复。
+// 第一层:purity 不把引用写(this.f/obj.f/arr[i])当副作用 → 可变方法判 Pure
+//        → `val r = obj.m()`(r 未用)被死声明消除,调用连同突变消失。
+// 第二层:`while cont`(裸变量条件)的 cond 节点是循环外的既有绑定节点,
+//        reset_condition_tree 只收集子图内节点 → 第二轮无可重评估节点,
+//        循环静默退出(条件变量每轮都被写的循环因 WriteBack 唤醒而掩盖)。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+type Counter = Counter(n: i64) {
+    pub fun &bump(): i64 { n = n + 1; n }
+}
+type Walker = Walker(limit: i64, pos: i64) {
+    pub fun &next(): i64? {
+        while pos < limit { pos = pos + 1; return pos }
+        null
+    }
+}
+
+fun main(): void {
+    println("-- 第一层:可变方法的 val 调用不被消除 --")
+    val c = Counter(0)
+    var i: i64 = 0
+    var ok = true
+    while i < 3 {
+        val r = c.bump()          // r 故意不用
+        if c.n != i + 1 { ok = false }
+        i = i + 1
+    }
+    check(ok && c.n == 3, "val r = c.bump() survives (n=3)")
+
+    println("-- 第二层:裸变量条件每轮重评估 --")
+    // 条件变量本轮可能不变(cont 前两轮保持 true)
+    val w = Walker(3, 0)
+    var cnt: i64 = 0
+    var cont = true
+    while cont {
+        val nx = w.next()
+        if nx == null { cont = false } else { cnt = cnt + 1 }
+    }
+    check(cnt == 3 && w.pos == 3, "while cont + mutable-method loop runs to 3")
+
+    // 纯裸变量条件 + 无方法调用(此前靠 WriteBack 掩盖的形状)
+    var flag = true
+    var k: i64 = 0
+    while flag {
+        k = k + 1
+        if k >= 5 { flag = false }
+    }
+    check(k == 5, "bare-var condition without method calls")
+
+    // 条件完全不变直到外部(边界:恒 true 由体内翻转)
+    var items: i64[] = []
+    var j: i64 = 0
+    var go = true
+    while go {
+        items = items ++ [j]
+        j = j + 1
+        if j >= 4 { go = false }
+    }
+    check(items.len() == 4, "bare-var condition with array growth")
+
+    println("-- 组合:for-in 对照仍正确 --")
+    var forin: i64 = 0
+    for x in items.iter() { forin = forin + x }
+    check(forin == 6, "for-in unaffected")
+    summary()
+}
