@@ -2,6 +2,16 @@
 // 的 type_id)哈希成同一个值 —— str 实例创建后,record 调用点命中 str 实例,
 // `==` 被编译成 CF_EQ_STR(record 相等恒 false)。修复后按"family+名字+参数"
 // 结构哈希。本套件锁定该场景及各种混合实例化顺序。
+// 跨模块同名:声明解析、实例缓存键、实例体编译此前均按裸名,A.f/B.f 共享
+// 一个实例并执行同一模块的函数体;修复后全程模块限定(CrossA/CrossB 用例)。
+// 泛型体内的模块限定调用:实例体重推断曾回放 HM 遍历记录的类型,ModuleRef
+// 携带的旧 EnvId 在临时上下文的私有 EnvArena 上越界 panic;EnvArena 现全局
+// 共享于 SemaResult(std.math / std.core.hash 用例)。
+import CrossA
+import CrossB
+import std.math
+import std.core.hash
+
 var failures: i32 = 0
 
 fun check(cond: bool, name: str): void {
@@ -19,6 +29,9 @@ type Q = Q(a: str, b: str)
 
 fun same<T>(a: T, b: T): bool { a == b }
 fun size_of<T>(v: T): i64 { 1 }
+
+fun with_math<T>(v: T): i64 { Math.min(1, 2) as i64 + Math.abs(3) }
+fun with_hash<T>(v: T): u64 { Hash.fnv1a(v) + Hash.mix_i64(7) }
 
 fun main(): void {
     println("-- 混合实例化顺序 --")
@@ -48,5 +61,19 @@ fun main(): void {
 
     println("-- 实例缓存不串值 --")
     check(size_of(p1) == 1 && size_of("s") == 1 && size_of(7i64) == 1, "multi-instance sanity")
+
+    println("-- 跨模块同名泛型(声明解析/缓存键/实例体编译均需模块限定)--")
+    check(CrossA.f(1) == 100, "CrossA.f runs A's body")
+    check(CrossB.f(1) == 200, "CrossB.f runs B's body")
+    check(CrossA.f("x") == 100 && CrossB.f("x") == 200, "same-name generics per-type per-module")
+    check(CrossA.f(1) == 100 && CrossB.f(1) == 200, "repeated calls stay module-correct")
+    check(CrossA.g(1) == 10 && CrossB.g(1) == 20, "same-name non-generics stay module-correct")
+
+    println("-- 泛型体内的模块限定调用(EnvArena 全局共享)--")
+    check(with_math(5) == 1 + 3, "std.math calls inside a generic body")
+    check(with_hash("x") == Hash.fnv1a("x") + Hash.mix_i64(7), "std.core.hash str call inside a generic body")
+    val bytes_in_generic: u8[] = [200, 1, 42]
+    check(with_hash(bytes_in_generic) == Hash.fnv1a(bytes_in_generic) + Hash.mix_i64(7), "byte array through nested generic + qualified call")
+    check(with_math(1) == 4 && with_math("s") == 4, "generic body repeats across type args")
     summary()
 }

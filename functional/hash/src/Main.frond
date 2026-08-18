@@ -1,0 +1,100 @@
+// 功能验证:std.core.hash — FNV-1a 64(字节/字符串,规范测试向量)、
+// key 泛型键哈希(collections 的 "{k}" 方案)、mix_i64 fmix64 混合器;
+// collections 四容器改用本库的行为由 collections 套件锁定;
+// 根库引入形态(import std.core 一并带出 Hash)由 core_module 套件锁定。
+import std.core.hash
+import std.collections
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun main(): void {
+    // ── FNV-1a 规范向量(FNV 参考表)──────────────────────────
+    check(Hash.fnv1a("") == 0xcbf29ce484222325, "fnv1a empty = offset basis")
+    check(Hash.fnv1a("a") == 0xaf63dc4c8601ec8c, "fnv1a \"a\" spec vector")
+    check(Hash.fnv1a("foobar") == 0x85944171f73967e8, "fnv1a \"foobar\" spec vector")
+
+    // ── 字节与字符串一致性 ──────────────────────────────────
+    check(Hash.fnv1a_bytes("foobar".bytes()) == Hash.fnv1a("foobar"), "bytes == str form")
+    check(Hash.fnv1a("abc") != Hash.fnv1a("abd"), "different strings differ")
+    check(Hash.fnv1a("abc") == Hash.fnv1a("abc"), "deterministic")
+    check(Hash.fnv1a(42) == 0, "fnv1a non-str sentinel")
+
+    // ── 泛型入口直接收字节数组(引擎:元素感知 type_name + 数组转换)──
+    val bin: u8[] = [200, 1, 42]
+    check(Hash.fnv1a(bin) == Hash.fnv1a_bytes(bin), "fnv1a takes u8[] directly")
+    check(Crc32.crc32(bin) == Crc32.crc32_bytes(bin), "crc32 takes u8[] directly")
+    check(Adler32.adler32(bin) == Adler32.adler32_bytes(bin), "adler32 takes u8[] directly")
+    check(Xxh64.xxh64(bin) == Xxh64.xxh64_bytes(bin), "xxh64 takes u8[] directly")
+    check(Crc32.crc32("foobar".bytes()) == (0x9EF61F95 as u32), "crc32 u8[] vector")
+    val notbytes: i32[] = [1, 2, 3]
+    check(Crc32.crc32(notbytes) == (0 as u32), "i32[] still sentinel")
+
+    // ── key:collections 泛型键方案 ─────────────────────────
+    check(Hash.key(42) == Hash.fnv1a("42"), "key(i64) = fnv1a of printed form")
+    check(Hash.key(42) == Hash.key(42), "key deterministic")
+    check(Hash.key(42) != Hash.key(43), "nearby keys differ")
+    check(Hash.key("x") == Hash.key("x"), "key on str deterministic")
+
+    // ── mix_i64:fmix64 混合器 ──────────────────────────────
+    check(Hash.mix_i64(0) == 0, "fmix64(0) = 0 (fixed point)")
+    check(Hash.mix_i64(1) == 0xb456bcfc34c2cb2c, "fmix64(1) reference value")
+    check(Hash.mix_i64(1) != 1, "small input avalanched")
+    check(Hash.mix_i64(-1) != Hash.mix_i64(-2), "negative neighbors differ")
+    check(Hash.mix_i64(1) != Hash.mix_i64(2), "positive neighbors differ")
+    check(Hash.mix_i64(-1) == Hash.mix_i64(-1), "mix deterministic")
+
+    // ── 与 collections 的联动(同一方案)───────────────────
+    val m = HashMap.new()
+    m.set("fnv", 1)
+    m.set("fmix", 2)
+    check(m.get("fnv") == 1 && m.get("fmix") == 2, "HashMap over Hash.key")
+    val im = IntMap.new()
+    im.set(-1, 10)
+    im.set(-2, 20)
+    check(im.get(-1) == 10 && im.get(-2) == 20, "IntMap over Hash.mix_i64")
+
+    // ── Crc32(zlib 逐字节兼容)────────────────────────────
+    check(Crc32.crc32("") == (0x00000000 as u32), "Crc32.crc32 empty")
+    check(Crc32.crc32("a") == (0xE8B7BE43 as u32), "Crc32.crc32 a")
+    check(Crc32.crc32("abc") == (0x352441C2 as u32), "Crc32.crc32 abc")
+    check(Crc32.crc32("123456789") == (0xCBF43926 as u32), "Crc32.crc32 check value")
+    check(Crc32.crc32(42) == (0 as u32), "Crc32.crc32 non-str sentinel")
+    check(Crc32.crc32("The quick brown fox jumps over the lazy dog") == (0x414FA339 as u32), "Crc32.crc32 pangram")
+    check(Crc32.crc32_bytes("foobar".bytes()) == (0x9EF61F95 as u32), "Crc32.crc32 bytes form")
+
+    // ── Adler32 ─────────────────────────────────────────────
+    check(Adler32.adler32("") == 0x00000001, "Adler32.adler32 empty")
+    check(Adler32.adler32("a") == 0x00620062, "Adler32.adler32 a")
+    check(Adler32.adler32("abc") == 0x024D0127, "Adler32.adler32 abc")
+    check(Adler32.adler32_bytes("123456789".bytes()) == 0x091E01DE, "Adler32.adler32 bytes form")
+    check(Adler32.adler32("The quick brown fox jumps over the lazy dog") == 0x5BDC0FDA, "Adler32.adler32 pangram")
+
+    // ── Xxh64(规范向量;长输入走 4-lane + 尾部通道)───────
+    check(Xxh64.xxh64("") == (0xEF46DB3751D8E999 as u64), "Xxh64.xxh64 empty spec vector")
+    check(Xxh64.xxh64("a") == (0xD24EC4F1A98C6E5B as u64), "Xxh64.xxh64 a")
+    check(Xxh64.xxh64("abc") == (0x44BC2CF5AD770999 as u64), "Xxh64.xxh64 abc")
+    check(Xxh64.xxh64("foobar") == (0xA2AA05ED9085AAF9 as u64), "Xxh64.xxh64 foobar")
+    check(Xxh64.xxh64("The quick brown fox jumps over the lazy dog") == (0x66E0B04C8767A448 as u64), "Xxh64.xxh64 4-lane + 8/1 tail")
+    check(Xxh64.xxh64_bytes("xxhash makes a fine addition to the stdlib collection".bytes()) == (0xDCE6A0EC313FF895 as u64), "Xxh64.xxh64 4-lane + 8/4/1 tail")
+    check(Xxh64.xxh64("abc") != Xxh64.xxh64("abd"), "Xxh64.xxh64 avalanche sanity")
+
+    summary()
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

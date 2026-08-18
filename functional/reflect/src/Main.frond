@@ -76,6 +76,19 @@ fun main(): void {
     check(arr.kind() == "Array", "array kind() == Array")
     check(arr.len() == 3, "array len() == 3 (builtin)")
 
+    // ── array type_name() element-aware (regression: was always "array") ──
+    check(arr.type_name() == "i32[]", "i32[] type_name()")
+    val b: u8[] = [1, 2, 3]
+    check(b.type_name() == "u8[]", "u8[] type_name()")
+    val s2 = ["x", "y"]
+    check(s2.type_name() == "str[]", "str[] type_name()")
+    val nested: u8[][] = [[1], [2, 3]]
+    check(nested.type_name() == "u8[][]", "nested u8[][] type_name()")
+    val rec_arr = [p, p]
+    check(rec_arr.type_name() == "Point[]", "record array type_name()")
+    val empty2: u8[] = []
+    check(empty2.type_name() == "array", "empty array falls back to array")
+
     // ── println uses format internally (regression check) ───────────
     println("debug: {p}")
 

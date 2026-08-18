@@ -1,0 +1,4 @@
+// CrossB — 与 CrossA 同名对照模块(见 CrossA.frond 注释)。
+pub fun f<T>(x: T): i32 { 200 }
+
+pub fun g(x: i32): i32 { 20 }

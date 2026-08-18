@@ -66,6 +66,15 @@ fun main(): void {
     // ── Str 命名空间与常量混用(一次 import)──────────────────
     check(Str.repeat("ab", 2) == "abab", "Str.repeat via std.core")
 
+    // ── fmt 子库(std.core 根库一并带出 Fmt)─────────────────
+    check(Fmt.hex(255) == "ff", "Fmt.hex via std.core")
+    check(Fmt.pad_left(Fmt.hex(255), 4, 48) == "00ff", "Fmt.pad_left via std.core")
+
+    // ── hash 子库(std.core 根库一并带出 Hash/Crc32/Adler32/Xxh64)
+    check(Hash.fnv1a("a") == 0xaf63dc4c8601ec8c, "Hash.fnv1a via std.core")
+    check(Hash.mix_i64(1) != Hash.mix_i64(2), "Hash.mix_i64 via std.core")
+    check(Crc32.crc32("123456789") == (0xCBF43926 as u32), "Crc32.crc32 via std.core")
+
     summary()
 }
 
