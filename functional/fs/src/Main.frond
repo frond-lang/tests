@@ -168,7 +168,7 @@ fun dir_checks(): void {
 
 // 逐级建目录(用户版 mkdir -p):沿 parent 链收集缺失祖先,自顶向下创建
 async fun user_create_all(path: Path): Async<Throw<void, IOError>> {
-    val missing: Path[] = []
+    var missing: Path[] = []
     var cur: Path? = path
     var done = false
     while !done {
@@ -223,7 +223,7 @@ fun user_recursion_checks(): void {
 // 显式栈遍历(不用 async 递归——引擎当前 async 递归函数会挂起,另案):
 // 先删所有文件,目录按发现序倒序(自底向上)删除。
 async fun user_remove_all(path: Path): Async<Throw<void, IOError>> {
-    val dirs: Path[] = []
+    var dirs: Path[] = []
     var queue: Path[] = [path]
     while queue.len() > 0 {
         val cur = queue[queue.len() - 1]

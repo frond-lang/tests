@@ -1,0 +1,8 @@
+// str is immutable: a reference to a str element has no writable location,
+// so `&s[i]` must be rejected (it previously compiled to a snapshot cell).
+// EXPECT: cannot take a reference to a str element
+fun main(): void {
+    val s = "abc"
+    val r = &s[0]
+    println("{*r}")
+}

@@ -1,0 +1,350 @@
+// 功能验证：引用写穿（`&x` 静态重绑——名字读/写与 `*r` 读/写共享同一 Cell）
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// 基本写穿：`*r = v` 之后名字读到新值（含注册前已有一次读的场景）
+fun deref_write_then_read(): i64 {
+    var x: i64 = 1
+    val first = x
+    val r = &x
+    *r = 42
+    return first * 100 + x
+}
+
+// 反向写穿：`x = v` 之后 `*r` 读到新值
+fun name_write_then_deref(): i64 {
+    var x: i64 = 1
+    val r = &x
+    x = 7
+    return *r
+}
+
+// 复合赋值两条路径一致
+fun compound_both_ways(): i64 {
+    var x: i64 = 10
+    val r = &x
+    *r += 5
+    val a = x
+    x += 1
+    return a * 100 + *r
+}
+
+// 同一绑定二次取引用 = 同一 Cell（别名）
+fun two_refs_alias(): i64 {
+    var x: i64 = 1
+    val r1 = &x
+    val r2 = &x
+    *r1 = 30
+    return *r2 * 100 + x
+}
+
+// 连续写保序（名字写与 deref 写交错，最后写生效）
+fun writes_in_order(): i64 {
+    var x: i64 = 1
+    val r = &x
+    x = 2
+    x = 3
+    *r = 4
+    *r = 5
+    return x * 10 + *r
+}
+
+// 分支内写，分支外可观察
+fun branch_write(): i64 {
+    var x: i64 = 1
+    val r = &x
+    if true {
+        *r = 55
+    }
+    return x
+}
+
+// shadow 之后恢复普通数据流语义（新绑定不经过 Cell）
+fun shadow_after_ref(): i64 {
+    var x: i64 = 1
+    val r = &x
+    *r = 3
+    var x: i64 = 100
+    return x * 10 + *r
+}
+
+// 跨函数写穿：被调函数经引用参数写，调用方名字读
+fun set_through(r: &i64, v: i64): void {
+    *r = v
+}
+
+fun swap_refs(a: &i64, b: &i64): void {
+    val t = *a
+    *a = *b
+    *b = t
+}
+
+fun cross_function(): str {
+    var x: i64 = 5
+    set_through(&x, 77)
+    val a = x == 77
+    var p: i64 = 1
+    var q: i64 = 2
+    swap_refs(&p, &q)
+    val b = p == 2 && q == 1
+    return "{a} {b}"
+}
+
+// 循环内写穿与条件读
+fun loop_write_through(): i64 {
+    var x: i64 = 0
+    val r = &x
+    var i: i64 = 0
+    while i < 3 {
+        *r = *r + i
+        i += 1
+    }
+    return x
+}
+
+// 取引用后 val 快照：快照取读取时点的 Cell 值，后续写不影响快照
+fun val_snapshot(): i64 {
+    var x: i64 = 1
+    val r = &x
+    *r = 8
+    val y = x
+    *r = 9
+    return y * 10 + x
+}
+
+// 带引用参数 + 提前返回的内联函数（分支帧快照须含实参值）
+fun inline_early_return(p: &i64): i64 {
+    if *p > 0 {
+        return *p + 1
+    }
+    return 0
+}
+
+fun ref_arg_inline(): i64 {
+    var x: i64 = 41
+    return inline_early_return(&x)
+}
+
+// 非标量（str/数组）取引用不参与重绑：名字语义保持原样
+fun non_scalar_unchanged(): i64 {
+    val arr = [1, 2, 3]
+    val ar = &arr
+    val copied = *ar
+    return copied.len() as i64
+}
+
+// ── Place 引用（place 模型 B 阶段）：&arr[i] / &rec.field / &global ──
+
+type Pt = Pt(x: i64, y: i64)
+
+fun bump(pr: &i64): void {
+    *pr += 1
+}
+
+// 元素引用：写穿 + 活读（数组直改后引用见新值）
+fun elem_place(): i64 {
+    val arr: i64[] = [1, 2, 3]
+    val r = &arr[0]
+    *r = 99
+    val w = arr[0]
+    arr[0] = 7
+    return w * 10 + *r
+}
+
+// 元素引用跨函数 + 复合赋值
+fun elem_helper(): i64 {
+    val a: i64[] = [10, 20]
+    bump(&a[1])
+    val r = &a[0]
+    *r += 3
+    return a[1] * 100 + a[0]
+}
+
+// 经元素引用交换两个元素（mem 库经典模式）
+fun swap_two_elems(a: &i64, b: &i64): void {
+    val t = *a
+    *a = *b
+    *b = t
+}
+
+fun elem_swap(): str {
+    val a: i64[] = [1, 2]
+    swap_two_elems(&a[0], &a[1])
+    return "{a[0]},{a[1]}"
+}
+
+// 字段引用：写穿 + 活读 + 跨函数
+fun field_place(): i64 {
+    val p = Pt(1, 2)
+    val fx = &p.x
+    *fx = 42
+    val w = p.x
+    p.y = 9
+    val fy = &p.y
+    val live = *fy
+    bump(&p.x)
+    return w * 1000 + live * 100 + p.x
+}
+
+// 全局引用：活槽读写
+var g_slot: i64 = 10
+
+fun global_place(): i64 {
+    val gr = &g_slot
+    *gr = 55
+    val w = g_slot
+    g_slot = 66
+    return w * 100 + *gr
+}
+
+// ── C1-① 声明点槽化的新能力 ──
+
+// &x 在循环体内、声明在根部：循环外读（曾经的 sg 守卫泄漏洞）
+fun loop_ref_leak(): i64 {
+    var x: i64 = 1
+    var i: i64 = 0
+    while i < 3 {
+        val r = &x
+        *r = *r + i
+        i += 1
+    }
+    return x
+}
+
+// 分支内 &x、分支外读（曾经的兄弟作用域洞）
+fun branch_ref_scope(): i64 {
+    var x: i64 = 1
+    if true {
+        val r = &x
+        *r = 55
+    }
+    return x
+}
+
+// 声明点起全程序一致：&x 前的名字写、&x 后的 deref 写、再名字写全走同一 Cell
+fun order_independent(): i64 {
+    var a: i64 = 1
+    a = 5
+    val ra = &a
+    *ra = 6
+    a = 7
+    return a * 10 + *ra
+}
+
+// ── 容器 var 槽化（place 模型收尾①）：var 容器 = 绑定即 place ──
+
+type Pt2 = Pt2(x: i64, y: i64)
+
+fun container_place(): i64 {
+    var arr: i64[] = [1, 2, 3]
+    arr[0] = 10
+    val a = arr[0]
+    arr = [7, 8, 9]
+    return a * 100 + arr[0]
+}
+
+// &arr 成为绑定位置引用：*r = other 重绑 arr
+fun container_ref_rebind(): i64 {
+    var arr: i64[] = [1, 2, 3]
+    val r = &arr
+    *r = [5, 6]
+    return arr[0] * 10 + arr[1]
+}
+
+// record var：字段就地改 + 整体重绑
+fun record_var_place(): i64 {
+    var p = Pt2(1, 2)
+    p.x = 10
+    val a = p.x
+    p = Pt2(7, 8)
+    return a * 100 + p.x
+}
+
+// 循环内经名字改容器
+fun container_loop(): i64 {
+    var arr: i64[] = [5, 3, 1, 4, 2]
+    var i: i64 = 0
+    while i < 5 {
+        arr[i] = arr[i] * 2
+        i = i + 1
+    }
+    return arr[0] * 10 + arr[4]
+}
+
+// ── ③ 被赋值参数槽化：赋值变 cell store，替换 rebind+WriteBack 机械 ──
+
+fun countdown_param(n: i64): i64 {
+    while n > 0 { n = n - 1 }
+    n
+}
+
+fun param_branch_store(c: bool, x: i64): i64 {
+    if c { x = 1 } else { x = 2 }
+    x * 10
+}
+
+// ── ④ 捕获改造：cell 捕获（upvalue 载共享 Arc，deref 读写，零 WriteBack）──
+
+fun cap_snap(): i64 { var v: i64 = 10; val f = fun(): i64 { v }; v = 20; f() }
+fun cap_write(): i64 { var w: i64 = 1; val f = fun(): void { w = w + 10 }; f(); f(); w }
+fun cap_outer_write(): i64 { var e: i64 = 1; val f = fun(): i64 { e }; e = 7; f() }
+fun cap_nested_escape(): i64 {
+    var n: i64 = 100
+    val outer = fun(): (() -> i64) { fun(): i64 { n = n + 1; n } }
+    val f = outer()
+    f()
+    f()
+    n
+}
+
+fun main(): void {
+    println("ref_write:")
+    check(deref_write_then_read() == 142, "deref write then name read")
+    check(name_write_then_deref() == 7, "name write then deref read")
+    check(compound_both_ways() == 1516, "compound assign both ways")
+    check(two_refs_alias() == 3030, "two refs alias one cell")
+    check(writes_in_order() == 55, "interleaved writes stay ordered")
+    check(branch_write() == 55, "branch write observed after branch")
+    check(shadow_after_ref() == 1003, "shadow restores plain reads")
+    check(cross_function() == "true true", "cross-function set/swap through refs")
+    check(loop_write_through() == 3, "loop write-through accumulates")
+    check(val_snapshot() == 89, "val snapshot at read time")
+    check(ref_arg_inline() == 42, "ref arg into inlined early-return fn")
+    check(non_scalar_unchanged() == 3, "non-scalar refs unchanged")
+    check(elem_place() == 997, "elem place ref write-through + live read")
+    check(elem_helper() == 2113, "elem place ref cross-function + compound")
+    check(elem_swap() == "2,1", "swap two elements through refs")
+    check(field_place() == 42943, "field place ref write/live/helper")
+    check(global_place() == 5566, "global place ref live slot")
+    check(loop_ref_leak() == 4, "ref taken inside loop observed after loop")
+    check(branch_ref_scope() == 55, "ref taken in branch observed after branch")
+    check(order_independent() == 77, "decl-site cell order independence")
+    check(container_place() == 1007, "container var rebind + in-place both work")
+    check(container_ref_rebind() == 56, "ref to container rebinds the binding")
+    check(record_var_place() == 1007, "record var field mutate + rebind")
+    check(container_loop() == 104, "container mutated through name in loop")
+    check(countdown_param(5) == 0, "assigned param in loop condition")
+    check(param_branch_store(true, 9) == 10 && param_branch_store(false, 9) == 20, "assigned param stored in branches")
+    check(cap_snap() == 20, "lambda reads latest outer value")
+    check(cap_write() == 21, "lambda writes propagate to outer")
+    check(cap_outer_write() == 7, "outer write visible to lambda")
+    check(cap_nested_escape() == 102, "nested escaping closure shares cell")
+    summary()
+}

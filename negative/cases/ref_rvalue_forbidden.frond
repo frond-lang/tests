@@ -1,0 +1,10 @@
+// `&` requires a place (variable / arr[i] / rec.field). Rvalue borrows must
+// be rejected at check time — previously they compiled to a silent snapshot
+// Cell whose writes were lost.
+// EXPECT: cannot take a reference to this expression
+fun main(): void {
+    val a: i64 = 1
+    val b: i64 = 2
+    val r = &(a + b)
+    println("{*r}")
+}
