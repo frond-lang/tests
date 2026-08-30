@@ -1,0 +1,57 @@
+// ctor_name_clash/Main.frond — 撞名零参变体作实参:S2 ID 路径验收。
+// 形态:TDK.TAdt(零参)与 Ty.TAdt(一元)同名;裸名实参在期望类型
+// (A.TDK)下必须由 sema 唯一裁决并传导到 IR(ID 消费),不得走首胜
+// 字符串表拿错条目静默产 void(0 号案:frondc loadmany/check 崩溃)。
+import A
+import B
+
+type TDef = TDef(pub name: str, pub kind: A.TDK, pub tp: str[],
+    pub t1: str?, pub t2: i64?, pub m: str[], pub bases: str[])
+
+fun probe(def: TDef): str {
+    match def.kind {
+        TAdt => "Adt"
+        TRecord => "Record"
+        TAlias => "Alias"
+        TNewtype => "Newtype"
+    }
+}
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun main(): void {
+    check(probe(TDef("Error", TAdt, [], null, null, [], [])) == "Adt", "bare TAdt arg under clash")
+    check(probe(TDef("Rec", TRecord, [], null, null, [], [])) == "Record", "bare TRecord arg under clash")
+    check(probe(TDef("Al", TAlias, [], null, null, [], [])) == "Alias", "bare TAlias arg under clash")
+    check(probe(TDef("Nt", TNewtype, [], null, null, [], [])) == "Newtype", "bare TNewtype arg under clash")
+
+    // 同名一元变体照常可用(B 侧不受影响)
+    check(bval(B.TAdt(7)) == 7, "unary TAdt still constructible")
+
+    summary()
+}
+
+fun bval(v: B.Ty): i64 {
+    match v {
+        B.TAdt(n) => n
+        _ => -1
+    }
+}

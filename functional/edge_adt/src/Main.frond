@@ -97,18 +97,18 @@ fun shapeArea(s: Shape): f64 {
 type Drawing = Drawing(shapes: Shape[])
 
 // ─── 链表 ADT ───
-type List =
+type IntList =
     | Nil
-    | Cons(i32, List)
+    | Cons(i32, IntList)
 
-fun listLen(l: List): i32 {
+fun listLen(l: IntList): i32 {
     match l {
         Nil => 0
         Cons(_, t) => 1 + listLen(t)
     }
 }
 
-fun listSum(l: List): i32 {
+fun listSum(l: IntList): i32 {
     match l {
         Nil => 0
         Cons(h, t) => h + listSum(t)
@@ -135,7 +135,7 @@ fun optGet(o: Opt, default: i32): i32 {
 }
 
 // 链表反转（顶层函数，避免 Bug #19 嵌套递归）
-fun reverseList(l: List, acc: List): List {
+fun reverseList(l: IntList, acc: IntList): IntList {
     match l {
         Nil => acc
         Cons(h, t) => reverseList(t, Cons(h, acc))
@@ -268,7 +268,7 @@ fun main(): void {
     // ─── 8. 深递归 ADT（50 层链表）───
     println("--- 50-deep Linked List ---")
     // 通过 while 循环构建 50 元素链表（函数式，无原地修改）
-    var deep_list: List = Nil
+    var deep_list: IntList = Nil
     var li: i32 = 50
     while li > 0 {
         deep_list = Cons(li, deep_list)
@@ -327,7 +327,7 @@ fun main(): void {
     // ─── 12. 大胆：递归 ADT 构建 + map ───
     println("--- Recursive ADT Build & Map ---")
     // 构建 1..10 链表
-    var nums: List = Nil
+    var nums: IntList = Nil
     var ni: i32 = 10
     while ni > 0 {
         nums = Cons(ni, nums)
@@ -377,7 +377,7 @@ fun main(): void {
     val leaf_paren: Tree = Leaf()
     check(leaf_paren == Leaf, "Leaf() == Leaf")
 
-    val nil_paren: List = Nil()
+    val nil_paren: IntList = Nil()
     check(nil_paren == Nil, "Nil() == Nil")
     check(listLen(nil_paren) == 0, "Nil() length 0")
 

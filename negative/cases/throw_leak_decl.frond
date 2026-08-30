@@ -1,0 +1,9 @@
+// EXPECT: cannot bind a throw value
+fun risky(): Throw<i32, str> {
+    if true { Ok(1) } else { throw "boom" }
+}
+
+fun main(): void {
+    val a: i32 = risky()
+    println("{a}")
+}

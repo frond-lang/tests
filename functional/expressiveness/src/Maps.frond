@@ -1,0 +1,67 @@
+// Maps 探针 — 键类型覆盖:str 键 + i64 键的 Map 高频 set/get/has。
+//
+// sema 移植需要 Map<符号名, 句柄> 和 Map<句柄, 信息> 两类用法;此处
+// 验证两类键的 5 万级写入 + 读取性能与正确性。(record 复合键是已知
+// 疑点,单独放 probe/recordkey,不进驱动。)
+
+import std.collections.Map
+import std.core.fmt.Fmt
+import std.time.Instant
+
+pub fun probe(): str {
+    // ── str 键 ──
+    val names = Map.empty()
+    var i: i64 = 0
+    val t0 = Instant.now()
+    while i < 50000 {
+        val key = match Fmt.dec(i) {
+            Ok(s) => "k" + s
+            Error(_) => "?"
+        }
+        names.set(key, i * 2)
+        i = i + 1
+    }
+    val t1 = Instant.now()
+
+    var hits: i64 = 0
+    var j: i64 = 0
+    while j < 50000 {
+        val key = match Fmt.dec(j) {
+            Ok(s) => "k" + s
+            Error(_) => "?"
+        }
+        match names.get(key) {
+            null => {}
+            v => { hits = hits + v }
+        }
+        j = j + 1
+    }
+    val t2 = Instant.now()
+
+    // ── i64 键 ──
+    val ints = Map.empty()
+    var k: i64 = 0
+    while k < 50000 {
+        ints.set(k * 31, k)
+        k = k + 1
+    }
+    var int_hits: i64 = 0
+    var m: i64 = 0
+    while m < 50000 {
+        match ints.get(m * 31) {
+            null => {}
+            v => { int_hits = int_hits + v }
+        }
+        m = m + 1
+    }
+    val t3 = Instant.now()
+
+    val n: i64 = 50000
+    val expect = (n - 1) * n            // Σ i*2 = 2 * Σi
+    val ok = hits == expect && int_hits == (n - 1) * n / 2 &&
+        names.has("k42") && names.len() as i64 == 50000 && ints.len() as i64 == 50000
+    val set_ms = t1.duration_since(t0).as_millis()
+    val get_ms = t2.duration_since(t1).as_millis()
+    val int_ms = t3.duration_since(t2).as_millis()
+    "probe maps: {if ok { "PASS" } else { "FAIL" }} n=50000 strset_ms={set_ms} strget_ms={get_ms} intpair_ms={int_ms}"
+}

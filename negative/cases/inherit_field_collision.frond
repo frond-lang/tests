@@ -1,0 +1,9 @@
+// 两个基类同名字段:按名访问歧义无解,声明期拒绝。
+// EXPECT: inherited field name collision
+type P1 = P1(v: i32)
+type Q1 = Q1(v: i32)
+type R1(P1, Q1) = R1(w: i32)
+fun main(): void {
+    val v = R1(1, 2, 3)
+    println("{v.v}")
+}

@@ -1,0 +1,180 @@
+// 功能验证:具体类型继承(type X(Y, Z) 括号基类)
+// 覆盖:单基覆写+晚绑定、多基字段拼接、继承链跨层、super 到基类、
+// 子类型替换+动态分派、ADT 子类构造器集继承+外部 match、泛型钉实参。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 { println("RESULT: ALL PASSED") }
+    else { println("RESULT: {failures} FAILED") }
+}
+
+// ── 单基:覆写 + 晚绑定 ──
+type Animal = Animal(name: str) {
+    fun speak(): str { "..." }
+    fun intro(): str { name + " says " + speak() }
+}
+type Dog(Animal) = Dog() {
+    fun speak(): str { "woof" }
+}
+
+fun single_base(): void {
+    println("-- single base --")
+    val d = Dog("rex")
+    check(d.speak() == "woof", "override wins")
+    check(d.intro() == "rex says woof", "late binding in inherited method")
+    check(Animal("cat").intro() == "cat says ...", "base behavior intact")
+}
+
+// ── 多基:字段拼接 + 双基方法 ──
+type A1 = A1(a: i32) {
+    fun get_a(): i32 { a }
+}
+type B1 = B1(b: i32) {
+    fun get_b(): i32 { b }
+}
+type C1(A1, B1) = C1(c: i32) {
+    fun total(): i32 { get_a() + get_b() + c }
+}
+
+fun multi_base(): void {
+    println("-- multi base --")
+    val v = C1(1, 2, 3)
+    check(v.get_a() == 1 && v.get_b() == 2, "both bases' fields merged")
+    check(v.total() == 6, "both bases' methods inherited")
+}
+
+// ── 继承链:两层 ──
+type Root = Root(r: i32) {
+    fun root_v(): i32 { r }
+}
+type Mid(Root) = Mid(m: i32) {
+    fun mid_v(): i32 { root_v() * 10 + m }
+}
+type Chain(Mid) = Chain(c: i32) {
+    fun sum(): i32 { root_v() + mid_v() + c }
+}
+
+fun chain(): void {
+    println("-- chain --")
+    val v = Chain(1, 2, 100)
+    check(v.root_v() == 1 && v.mid_v() == 12 && v.sum() == 113, "two-level chain")
+}
+
+// ── super 到基类 ──
+type SBase = SBase(x: i32) {
+    fun describe(): str { "base:" + (x as str) }
+}
+type SChild(SBase) = SChild() {
+    fun describe(): str { "[" + super.describe() + "]" }
+}
+
+fun super_base(): void {
+    println("-- super to base --")
+    check(SChild(5).describe() == "[base:5]", "super reaches base impl")
+    check(SBase(3).describe() == "base:3", "base impl intact")
+}
+
+// ── 子类型替换 + 动态分派 ──
+type Shape = Shape(w: i32, h: i32) {
+    fun area(): i32 { w * h }
+    fun doubled(): i32 { area() * 2 }
+}
+type Square(Shape) = Square() {
+    fun area(): i32 { w * w }
+}
+
+fun take_area(s: Shape): i32 { s.area() }
+fun take_doubled(s: Shape): i32 { s.doubled() }
+
+fun substitution(): void {
+    println("-- substitution & dispatch --")
+    check(take_area(Square(4, 9)) == 16, "override dispatched via base param")
+    check(take_area(Shape(4, 9)) == 36, "base value via base param")
+    check(take_doubled(Square(3, 99)) == 18, "inherited method late-binds through base param")
+}
+
+// ── ADT 子类:构造器集继承 ──
+type Lst = | NilX | ConsX(i32, Lst) {
+    fun len(): i32 {
+        match this {
+            NilX => 0
+            ConsX(_, t) => 1 + t.len()
+        }
+    }
+    fun sum(): i32 {
+        match this {
+            NilX => 0
+            ConsX(h, t) => h + t.sum()
+        }
+    }
+}
+type MyLst(Lst) = MyLst() {
+    fun sum2(): i32 { sum() * 2 }
+}
+
+fun total_of(l: Lst): i32 { l.sum() }
+
+fun adt_child(): void {
+    println("-- ADT child --")
+    val a: MyLst = ConsX(1, ConsX(2, ConsX(3, NilX)))
+    check(a.len() == 3, "inherited ctor set constructs child")
+    check(a.sum() == 6, "inherited recursive match on child")
+    check(a.sum2() == 12, "child method over inherited")
+    check(total_of(a) == 6, "child value through base param")
+    var head = -1
+    match a {
+        ConsX(h, _) => { head = h }
+        NilX => { head = 0 }
+    }
+    check(head == 1, "external match on child value")
+}
+
+// ── 非首基替换 ──
+type M1 = M1(a: i32) {
+    fun get_a(): i32 { a }
+}
+type M2 = M2(b: i32) {
+    fun get_b(): i32 { b }
+    fun twice_b(): i32 { get_b() * 2 }
+}
+type M3(M1, M2) = M3(c: i32) {
+}
+fun take_second(x: M2): i32 { x.get_b() + x.twice_b() }
+
+fun nonfirst_base(): void {
+    println("-- non-first base --")
+    val v = M3(1, 2, 3)
+    check(take_second(v) == 6, "child value through non-first-base param")
+    check(v.get_a() == 1 && v.get_b() == 2, "direct fields of both bases")
+}
+
+// ── 泛型钉实参 ──
+type Box<T> = Box2(items: T[], n: usize) {
+    fun first(): T? { if n > 0 { items[0] } else { null } }
+}
+type IntBox(Box<i64>) = IntBox() {
+}
+
+fun pinned_args(): void {
+    println("-- pinned args --")
+    val b = IntBox([7], 1)
+    check((b.first() ?? -1) == 7, "generic base with pinned arg")
+}
+
+pub fun main(): void {
+    single_base()
+    multi_base()
+    chain()
+    super_base()
+    substitution()
+    adt_child()
+    nonfirst_base()
+    pinned_args()
+    summary()
+}

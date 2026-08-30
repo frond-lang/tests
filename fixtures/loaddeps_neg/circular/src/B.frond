@@ -1,0 +1,7 @@
+// B.frond — 1C 差分夹具:循环 import 的另一方。
+
+import A
+
+pub fun b_value(): i64 {
+    2
+}

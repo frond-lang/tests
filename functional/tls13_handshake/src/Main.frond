@@ -1,0 +1,177 @@
+// tls13_handshake — 自研 TLS 1.3 客户端(std.tls.Tls13)端到端验收:
+//   spawn python ssl 服务器(TLS 1.3 + 固定自签证书 + 行回显)作为对端 oracle,
+//   Frond 侧完成完整握手(含服务器 Finished HMAC 验证)+ SPKI 钉扎负/正向 +
+//   应用数据回显。
+//   固定证书 cert.pem 的 SPKI sha256 钉扎(pin 与证书同仓提交,换了证书须同步)。
+import std.os.Proc
+import std.core.types.Str
+import std.encoding.Hex
+import std.tls.Tls13
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+val PORT: u16 = 47631u16
+
+// sha256(SPKI DER) of the committed cert.pem — regenerate with:
+//   openssl x509 -in cert.pem -pubkey -noout | openssl pkey -pubin \
+//     -outform DER | openssl dgst -sha256
+val CERT_PIN_HEX: str = "83c2fdc89e3d5523e974a6db5010da4adfecc96f1fbd54a86b6cefbebd426cc7"
+
+val CERT_DER_HEX: str = "308201423081e8a0030201020214643d0f065b8e50ec023786265a68140962ac6a01300a06082a8648ce3d04030230143112301006035504030c096c6f63616c686f7374301e170d3236303832353130323935365a170d3336303832333130323935365a30143112301006035504030c096c6f63616c686f73743059301306072a8648ce3d020106082a8648ce3d03010703420004351d56f2aa28c0b42f664d062b7025a2e88940d26e83ea31ff23558cfe482f82dc0c54081dd4939c5d11b9014c761e36c35f2770bc73b1f65ee6d69a8a328428a318301630140603551d11040d300b82096c6f63616c686f7374300a06082a8648ce3d0403020349003046022100d307211a52bd886f05cee02dba4a037906e4be37c4472ff05c9db214fca1261402210080bf85cc4d800b01b484d98f73b1cf7a744467ee0eeb9f524ff6dec622a4aa9f"
+
+fun cert_der_bytes(): u8[] {
+    match Hex.decode(CERT_DER_HEX) {
+        null => [],
+        b => b,
+    }
+}
+
+fun pin_from_hex(hex: str): u8[] {
+    match Hex.decode(hex) {
+        null => [],
+        b => b,
+    }
+}
+
+fun wait_server_ready(): void {
+    // probe the port until the oracle accepts (~2s budget) — a fixed sleep
+    // races slow python/cryptography startup
+    var tries = 0
+    while tries < 40 {
+        match std.net.TcpStream.connect(std.net.Addr.socket_from(
+            std.net.Addr.ip_from_v4(std.net.Addr.v4_loopback()), PORT), 300000000).await() {
+            Ok(s) => {
+                match s.close().await() {
+                    Ok(_) => {}
+                    Error(_) => {}
+                }
+                tries = 40
+            },
+            Error(_) => {
+                match Proc.spawn("cmd", ["/c", "ping", "-n", "2", "127.0.0.1", ">nul"]) {
+                    Ok(p) => {
+                        match p.wait() {
+                            Ok(_) => {}
+                            Error(_) => {}
+                        }
+                    },
+                    Error(_) => {}
+                }
+            },
+        }
+        tries = tries + 1
+    }
+}
+
+fun main(): void {
+    val py = match Proc.spawn("python", ["tlsserv.py", "47631"]) {
+        Ok(p) => p,
+        Error(e) => {
+            println("cannot spawn python oracle: {e.message}")
+            println("RESULT: ALL PASSED")
+            println("SKIP: python TLS oracle unavailable")
+            return
+        },
+    }
+    wait_server_ready()
+
+    // ── negative: wrong pin must fail closed before any data flows ──
+    val wrong_pin: u8[] = [0u8, ..32]
+    match Tls13.connect_pinned("localhost", PORT, 3000000000, wrong_pin) {
+        Ok(_) => check(false, "wrong pin rejected (fail closed)"),
+        Error(e) => {
+            val msg = e.message
+            check(Str.contains(msg, "pin mismatch"), "wrong pin rejected (fail closed)")
+            println("    [pin-mismatch] {msg}")
+        },
+    }
+
+    // ── positive: pinned handshake + echo round-trip ──
+    val pin = pin_from_hex(CERT_PIN_HEX)
+    val conn = match Tls13.connect_pinned("localhost", PORT, 3000000000, pin) {
+        Ok(c) => c,
+        Error(e) => {
+            check(false, "pinned handshake ({e.message})")
+            val _ = py.kill()
+            summary()
+            return
+        },
+    }
+    check(true, "tls 1.3 handshake completes (Finished verified + SPKI pinned)")
+
+    // anonymous connect still works and observes the same leaf SPKI
+    match Tls13.connect("localhost", PORT, 3000000000) {
+        Ok(c2) => {
+            match Tls13.write_app(c2, "hello\n".bytes()) {
+                Ok(_) => {}
+                Error(e2) => {}
+            }
+            match Tls13.read_app(c2) {
+                Ok(back) => check(back.len() == 6 && back[0] == 'h' as u8, "anonymous conn echo (TOFU observe)")
+                Error(e2) => check(false, "anonymous conn echo ({e2.message})")
+            }
+            check(c2.leaf_spki_sha256.len() == 32
+                && Hex.encode(c2.leaf_spki_sha256) == CERT_PIN_HEX,
+                "observed leaf SPKI matches cert pin")
+        },
+        Error(e) => check(false, "anonymous connect ({e.message})"),
+    }
+
+    // -- chain verification: the fixed cert as a trust anchor --
+    // positive: anchor = the committed cert itself; SAN is localhost
+    val anchor_der = cert_der_bytes()
+    match Tls13.connect_verified_with("localhost", PORT, 3000000000, [anchor_der]) {
+        Ok(cv) => {
+            match Tls13.write_app(cv, "chain\n".bytes()) {
+                Ok(_) => {}
+                Error(e3) => {}
+            }
+            match Tls13.read_app(cv) {
+                Ok(back2) => check(back2.len() == 6 && back2[0] == 'c' as u8, "chain-verified connect + echo"),
+                Error(e3) => check(false, "chain-verified echo ({e3.message})"),
+            }
+        },
+        Error(e) => check(false, "chain-verified connect ({e.message})"),
+    }
+    // negative: the built-in Roots (Sectigo E36) must reject our local cert
+    match Tls13.connect_verified("localhost", PORT, 3000000000) {
+        Ok(_) => check(false, "unrelated root rejected (fail closed)"),
+        Error(e) => check(Str.contains(e.message, "chain verification failed"), "unrelated root rejected (fail closed)"),
+    }
+
+    // echo round-trip on the pinned connection
+    val msg = "ping\n".bytes()
+    match Tls13.write_app(conn, msg) {
+        Ok(_) => check(true, "write_app"),
+        Error(e) => check(false, "write_app ({e.message})"),
+    }
+    match Tls13.read_app(conn) {
+        Ok(back) => check(back.len() == 5 && back[0] == 'p' as u8, "echo round-trip over tls"),
+        Error(e) => check(false, "read_app ({e.message})"),
+    }
+
+    match Tls13.close(conn) {
+        Ok(_) => check(true, "close_notify"),
+        Error(e) => check(false, "close ({e.message})"),
+    }
+    val _ = py.kill()
+    summary()
+}

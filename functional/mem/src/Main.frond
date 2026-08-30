@@ -1,9 +1,11 @@
 // 功能验证：std.core.mem — T[] 通用容器原语
-// fill/copy/swap/reverse/repeat/equal 走 u8[] C 快路径与泛型纯 Frond 兜底两条路；
+// fill/copy/swap/reverse/repeat/equal 走标量 C 快路径（u8 及第 2 期的
+// i8..i64/u16..u64/isize/usize/f32/f64）与泛型纯 Frond 兜底两条路；
 // clone 为 reflect 深拷贝（数组/Adt/Record 递归，不可变叶子与运行时身份共享）。
 // 性能锚点防"退化回解释执行"。2026-08-18 SoA 启用后重测收紧：
 // fill 0.28ms / copy 0.62ms / clone 0.20ms（SoA 单源化后；锚点留 ~10× 余量防 CI 抖动）。
 import std.core.mem
+import std.math
 import std.time.Instant
 
 var failures: i32 = 0
@@ -38,7 +40,7 @@ fun main(): void {
 
     val b: i64[] = [1, 2, 3]
     Mem.fill(b, 9)
-    check(b[0] == 9 && b[1] == 9 && b[2] == 9, "fill i64 (generic loop)")
+    check(b[0] == 9 && b[1] == 9 && b[2] == 9, "fill i64 (scalar C path)")
 
     val strs: str[] = ["a", "b"]
     Mem.fill(strs, "z")
@@ -63,7 +65,7 @@ fun main(): void {
     val gd: i64[] = [0, 0, 0, 0]
     val gs: i64[] = [4, 5, 6]
     Mem.copy(gd, 1, gs, 0, 3)
-    check(gd[1] == 4 && gd[2] == 5 && gd[3] == 6, "copy i64 generic")
+    check(gd[1] == 4 && gd[2] == 5 && gd[3] == 6, "copy i64 (scalar C path)")
 
     Mem.copy(dst, dst.len(), src, 0, 0 as usize)
     check(true, "copy zero-count at endpoint is legal")
@@ -86,7 +88,7 @@ fun main(): void {
 
     val h: i64[] = [1, 2, 3]
     Mem.reverse(h)
-    check(h[0] == 3 && h[1] == 2 && h[2] == 1, "reverse i64 generic")
+    check(h[0] == 3 && h[1] == 2 && h[2] == 1, "reverse i64 (scalar C path)")
 
     val one: u8[] = [5]
     Mem.reverse(one)
@@ -124,6 +126,122 @@ fun main(): void {
     check(Mem.contains([9, 9, 7], [7]), "contains hit")
     check(!Mem.contains([9], [8]), "contains miss")
 
+    // ── 标量 intrinsic（第 2 期：i8..f64 的 C 快路）──────
+    // fill：负值/宽度/浮点经由原生字节往返必须逐位保真
+    val fi32: i32[] = [1, 2, 3, 4]
+    Mem.fill(fi32, -7)
+    check(fi32[0] == -7 && fi32[3] == -7, "fill i32 negative (C)")
+
+    val fu16: u16[] = [1, 2]
+    Mem.fill(fu16, 65535)
+    check(fu16[0] == 65535 && fu16[1] == 65535, "fill u16 width boundary")
+
+    val fi8: i8[] = [1, 2]
+    Mem.fill(fi8, -128)
+    check(fi8[0] == -128, "fill i8 negative boundary")
+
+    val ff64: f64[] = [1.5, 2.5]
+    Mem.fill(ff64, 0.25)
+    check(ff64[0] == 0.25 && ff64[1] == 0.25, "fill f64 (C)")
+
+    val fnavail: f32[] = [1.0, 2.0]
+    Mem.fill(fnavail, Math.nan_f32())
+    check(fnavail[0] != fnavail[0], "fill f32 NaN payload survives round-trip")
+
+    val fu: usize[] = [1, 2]
+    Mem.fill(fu, 42)
+    check(fu[1] == 42, "fill usize")
+    val fis: isize[] = [1, 2]
+    Mem.fill(fis, -9)
+    check(fis[0] == -9, "fill isize negative")
+
+    // 写回经 Arc 身份 — 共享引用能看到 C 侧变异
+    val shared: i64[] = [1, 2, 3]
+    val alias64 = shared
+    Mem.fill(shared, 5)
+    check(alias64[0] == 5 && alias64[2] == 5, "fill visible through shared reference")
+
+    // copy：i32 自重叠前向/后向（memmove 语义）
+    val cfw: i32[] = [1, 2, 3, 4, 5]
+    Mem.copy(cfw, 1, cfw, 0, 3)
+    check(cfw[0] == 1 && cfw[1] == 1 && cfw[2] == 2 && cfw[3] == 3 && cfw[4] == 5,
+          "copy i32 overlap forward (memmove)")
+
+    val cbw: i32[] = [1, 2, 3, 4, 5]
+    Mem.copy(cbw, 0, cbw, 1, 3)
+    check(cbw[0] == 2 && cbw[1] == 3 && cbw[2] == 4 && cbw[3] == 4 && cbw[4] == 5,
+          "copy i32 overlap backward (memmove)")
+
+    val cfd: f64[] = [0.0, 0.0, 0.0, 0.0]
+    val cfs: f64[] = [1.5, -2.5]
+    Mem.copy(cfd, 1, cfs, 0, 2)
+    check(cfd[1] == 1.5 && cfd[2] == -2.5, "copy f64 separate buffers")
+
+    val cneg: i16[] = [-300, 300]
+    Mem.copy(cneg, 0, cneg, 1, 1)
+    check(cneg[0] == 300 && cneg[1] == 300, "copy i16 negative round-trip")
+
+    val cu: u64[] = [0, 0]
+    val cumax: u64[] = [18446744073709551615u64]
+    Mem.copy(cu, 0, cumax, 0, 1)
+    check(cu[0] == 18446744073709551615u64, "copy u64 max round-trip")
+
+    // 混装整型标签的 u8 blob（os.pack_args 惯用法：`bytes ++ [0]` 的 [0] 是
+    // i32 标签，SoA 不生成）— 必须经由逐元素 u8 序列化通过 C 编组
+    // （回归锚：2026-08-22 硬化曾拒编导致 os.spawn 全灭）
+    var blob: u8[] = []
+    blob = blob ++ "ab".bytes() ++ [0]
+    val bdst: u8[] = [9, 9, 9]
+    Mem.copy(bdst, 0, blob, 0, 3)
+    check(bdst[0] == 97 && bdst[1] == 98 && bdst[2] == 0, "copy mixed-tag u8 blob (pack_args idiom)")
+
+    // reverse
+    val ri32: i32[] = [1, 2, 3, 4]
+    Mem.reverse(ri32)
+    check(ri32[0] == 4 && ri32[1] == 3 && ri32[2] == 2 && ri32[3] == 1, "reverse i32 (C)")
+
+    val rf64: f64[] = [1.0, 2.0, 3.0]
+    Mem.reverse(rf64)
+    check(rf64[0] == 3.0 && rf64[2] == 1.0, "reverse f64")
+
+    // compare：符号序（memcmp 字节序会把负数排到大端）+ 浮点 IEEE 语义
+    check(Mem.compare([-1], [1]) == -1, "compare i32 negative < positive")
+    check(Mem.compare([-2], [-1]) == -1, "compare i32 both negative")
+    check(Mem.compare([2147483647i32], [-2147483648i32]) == 1, "compare i32 extremes")
+    check(Mem.compare([-9223372036854775808i64], [9223372036854775807i64]) == -1, "compare i64 extremes")
+    check(Mem.compare([1.5], [2.5]) == -1, "compare f64 lt")
+    check(Mem.compare([-1.5], [1.5]) == -1, "compare f64 negative lt positive")
+    check(Mem.compare([-0.0], [0.0]) == 0, "compare f64 -0.0 == 0.0")
+    check(Mem.compare([1.5], [1.5, 2.5]) == -1, "compare f64 shorter-is-less")
+    val e32: i32[] = []
+    check(Mem.compare(e32, fi32) == -1, "compare empty operand is less")
+
+    // index_of：标量 C 路 + 空针/空草堆边界
+    val hay32: i32[] = [10, 20, 30, 20, 30]
+    val ndl32: i32[] = [20, 30]
+    check(Mem.index_of(hay32, ndl32) == 1, "index_of i32 (C)")
+    val miss32: i32[] = [99]
+    check(Mem.index_of(hay32, miss32) == -1, "index_of i32 miss")
+    val ndl2_32: i32[] = [30, 20]
+    check(Mem.index_of(hay32, ndl2_32) == 2, "index_of i32 second-window match")
+    val empty32: i32[] = []
+    check(Mem.index_of(hay32, empty32) == 0, "index_of empty needle (C dummy-pointer path)")
+    check(Mem.index_of(empty32, ndl32) == -1, "index_of empty hay")
+    val hayf: f64[] = [1.5, 2.5, 3.5]
+    val ndlf: f64[] = [2.5]
+    check(Mem.index_of(hayf, ndlf) == 1, "index_of f64 (C)")
+    val ndlnan: f64[] = [Math.nan_f64()]
+    check(Mem.index_of(hayf, ndlnan) == -1, "index_of f64 NaN never matches (IEEE)")
+    val haynan: f64[] = [1.5, 2.5, 3.5]
+    haynan[1] = Math.nan_f64()
+    check(Mem.index_of(haynan, ndlnan) == -1,
+          "index_of NaN hay element never matches either")
+
+    // equal 保持引擎 SIMD 语义路径，标量数组必须一致
+    check(Mem.equal(fi32, [-7, -7, -7, -7]), "equal i32 (engine SIMD)")
+    check(!Mem.equal([1.5, 2.5], [1.5, 2.6]), "equal f64 diff")
+    check(Mem.equal([-0.0, 1.0], [0.0, 1.0]), "equal f64 -0.0 == 0.0")
+
     // ── clone (deep copy) ────────────────────────────────
     val grid: u8[][] = [[1, 2], [3, 4]]
     val gc = Mem.clone(grid)
@@ -148,6 +266,106 @@ fun main(): void {
     val mc = m.clone()
     mc[0] = 9
     check(m[0] == 1, "method form .clone() deep copy")
+
+    // ── 全宽补齐（bool/char/i128/u128/f16/f128，第 3 批）──
+    // bool
+    val fb: bool[] = [false, true, false]
+    Mem.fill(fb, true)
+    check(fb[0] && fb[2], "fill bool (C)")
+    val cb1: bool[] = [true, false]
+    val cb2: bool[] = [false, true]
+    check(Mem.compare(cb1, cb2) == 1 && Mem.compare(cb2, cb1) == -1, "compare bool false < true")
+    val rb: bool[] = [false, true, false]
+    Mem.reverse(rb)
+    check(!rb[0] && rb[1] && !rb[2], "reverse bool")
+    val hb: bool[] = [true, false, true, true]
+    val nb: bool[] = [true, true]
+    check(Mem.index_of(hb, nb) == 2, "index_of bool")
+    val cpb_dst: bool[] = [false, false]
+    val cpb_src: bool[] = [true, false]
+    Mem.copy(cpb_dst, 0, cpb_src, 0, 2)
+    check(cpb_dst[0] && !cpb_dst[1], "copy bool")
+
+    // char（码点序）
+    val fc: char[] = ['中', 'a']
+    Mem.fill(fc, 'z')
+    check(fc[0] == 'z' && fc[1] == 'z', "fill char (C)")
+    val cc1: char[] = ['a', '中']
+    val cc2: char[] = ['b']
+    check(Mem.compare(cc1, cc2) == -1, "compare char code-point order")
+    val hc: char[] = ['a', '中', 'b', '中']
+    val nc: char[] = ['中']
+    check(Mem.index_of(hc, nc) == 1, "index_of char")
+    val rc: char[] = ['a', 'b', 'c']
+    Mem.reverse(rc)
+    check(rc[0] == 'c' && rc[2] == 'a', "reverse char")
+
+    // i128：符号序（u64 对比较的高位符号处理）
+    val i128_one: i128 = 1
+    val i128_min = -(i128_one << 127)
+    val i128_max = (i128_one << 127) - i128_one
+    val fi128: i128[] = [0, 0]
+    Mem.fill(fi128, i128_min)
+    check(fi128[0] == i128_min && fi128[1] == i128_min, "fill i128 min (pattern array)")
+    check(Mem.compare([-1 as i128], [1 as i128]) == -1, "compare i128 negative < positive")
+    check(Mem.compare([i128_min], [i128_max]) == -1, "compare i128 extremes")
+    check(Mem.compare([i128_one], [i128_one]) == 0, "compare i128 equal")
+    val cpi_dst: i128[] = [0, 0]
+    val cpi_src: i128[] = [i128_max, i128_min]
+    Mem.copy(cpi_dst, 0, cpi_src, 0, 2)
+    check(cpi_dst[0] == i128_max && cpi_dst[1] == i128_min, "copy i128 round-trip")
+    val hi128: i128[] = [1, i128_min, 2, i128_min]
+    val ni128: i128[] = [i128_min]
+    check(Mem.index_of(hi128, ni128) == 1, "index_of i128")
+    val ri128: i128[] = [i128_one, 2 as i128, 3 as i128]
+    Mem.reverse(ri128)
+    check(ri128[0] == 3 as i128 && ri128[2] == i128_one, "reverse i128")
+
+    // u128：max 往返 + 无符号序
+    val u128_zero: u128 = 0
+    val u128_max = ~u128_zero
+    val fu128: u128[] = [0, 0]
+    Mem.fill(fu128, u128_max)
+    check(fu128[0] == u128_max && fu128[1] == u128_max, "fill u128 max (pattern array)")
+    val u128_lo_a: u128[] = [u128_max - 1]
+    val u128_hi_b: u128[] = [u128_max]
+    check(Mem.compare(u128_lo_a, u128_hi_b) == -1, "compare u128 top range ordering")
+    val hi_u: u128[] = [u128_max, 0, u128_max]
+    val nu: u128[] = [u128_max, 0]
+    check(Mem.index_of(hi_u, nu) == 0, "index_of u128 window")
+
+    // f16：位保真填充 + IEEE 数值语义（NaN 永不相等）
+    val fnavail16: f16[] = [1.0f16, 2.0f16]
+    Mem.fill(fnavail16, Math.nan_f16())
+    check(fnavail16[0] != fnavail16[0], "fill f16 NaN bits survive (pattern array)")
+    val f16_hi: f16[] = [1.5f16, 2.5f16, 3.5f16]
+    val f16_nd: f16[] = [2.5f16]
+    check(Mem.index_of(f16_hi, f16_nd) == 1, "index_of f16 numeric")
+    val f16_nan_nd: f16[] = [Math.nan_f16()]
+    check(Mem.index_of(f16_hi, f16_nan_nd) == -1, "index_of f16 NaN never matches (IEEE)")
+    check(Mem.compare([1.5f16], [2.5f16]) == -1, "compare f16 lt")
+    check(Mem.compare([-0.0f16], [0.0f16]) == 0, "compare f16 -0.0 == 0.0")
+    val rf16: f16[] = [1.0f16, 2.0f16]
+    Mem.reverse(rf16)
+    check(rf16[0] == 2.0f16, "reverse f16")
+
+    // f128：totalOrder 序（-0.0 < +0.0）+ 按位相等（引擎 F128 语义）
+    check(Mem.compare([-0.0f128], [0.0f128]) == -1, "compare f128 totalOrder -0.0 < +0.0")
+    check(Mem.compare([1.5f128], [2.5f128]) == -1, "compare f128 lt")
+    check(Mem.compare([-1.5f128], [1.5f128]) == -1, "compare f128 negative lt positive")
+    val f128_nan_a: f128[] = [Math.nan_f128()]
+    val f128_nan_b: f128[] = [Math.nan_f128()]
+    check(!Mem.equal(f128_nan_a, f128_nan_b), "equal f128 NaN numeric unequal (engine semantics)")
+    val hf128: f128[] = [1.5f128, Math.nan_f128(), 2.5f128]
+    check(Mem.index_of(hf128, f128_nan_a) == -1, "index_of f128 NaN never matches (numeric)")
+    val ff128: f128[] = [0.0f128, 0.0f128]
+    Mem.fill(ff128, Math.inf_f128())
+    check(ff128[0] == Math.inf_f128(), "fill f128 inf bits (pattern array)")
+    val hcp: f128[] = [1.5f128, -2.5f128]
+    val cp128_dst: f128[] = [0.0f128, 0.0f128]
+    Mem.copy(cp128_dst, 0, hcp, 0, 2)
+    check(cp128_dst[0] == 1.5f128 && cp128_dst[1] == -2.5f128, "copy f128 round-trip")
+
 
     // ── 性能锚点（防退化回解释执行）──────────────────────
     println("")
@@ -176,6 +394,34 @@ fun main(): void {
     println("    clone 1MB:   {clone_us} us")
     check(clone_us < 2000, "perf: clone 1MB < 2ms")
     check(cl[0] == 9, "perf clone correct")
+
+    // 标量 intrinsic 锚点：i32 1M 元素（4MB）— 若退化回解释执行（每次
+    // 迭代经引擎派发），将在百 ms 量级；C 快路含序列化/写回在 ms 量级。
+    val big32: i32[] = [0, ..n]
+    t0 = Instant.now()
+    Mem.fill(big32, -12345)
+    t1 = Instant.now()
+    val fill32_us = t1.duration_since(t0).as_micros()
+    println("    fill 1M i32: {fill32_us} us")
+    check(fill32_us < 50000, "perf: fill 1M i32 < 50ms")
+    check(big32[0] == -12345 && big32[n - 1] == -12345, "perf fill i32 correct")
+
+    val bigf: f64[] = [0.0, ..n]
+    t0 = Instant.now()
+    Mem.fill(bigf, 2.5)
+    t1 = Instant.now()
+    val fillf_us = t1.duration_since(t0).as_micros()
+    println("    fill 1M f64: {fillf_us} us")
+    check(fillf_us < 50000, "perf: fill 1M f64 < 50ms")
+    check(bigf[0] == 2.5, "perf fill f64 correct")
+
+    t0 = Instant.now()
+    Mem.copy(big32, 0, big32, 1, n - 1)
+    t1 = Instant.now()
+    val copy32_us = t1.duration_since(t0).as_micros()
+    println("    copy 1M i32: {copy32_us} us")
+    check(copy32_us < 50000, "perf: copy 1M i32 overlap < 50ms")
+    check(big32[0] == -12345 && big32[1] == -12345, "perf copy i32 correct")
 
     summary()
 }

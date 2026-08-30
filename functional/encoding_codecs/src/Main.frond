@@ -1,0 +1,99 @@
+// 功能验证:std.encoding —— Hex/Base64 字节-文本编解码
+// RFC 4648 测试向量 + 往返恒等 + 负向(畸形输入返 null)。
+import std.encoding
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond { println("  PASS: {name}") }
+    else { failures = failures + 1; println("  FAIL: {name}") }
+}
+
+fun check_hex_null(s: str, name: str): void {
+    match Hex.decode(s) {
+        null => check(true, name),
+        _ => check(false, name),
+    }
+}
+
+fun check_b64_null(s: str, name: str): void {
+    match Base64.decode(s) {
+        null => check(true, name),
+        _ => check(false, name),
+    }
+}
+
+fun bytes_eq(a: u8[], b: u8[]): bool {
+    if a.len() != b.len() { return false }
+    var i: usize = 0
+    while i < a.len() {
+        if a[i] != b[i] { return false }
+        i = i + 1
+    }
+    true
+}
+
+fun roundtrip_hex(data: u8[], name: str): void {
+    val dec = Hex.decode(Hex.encode(data))
+    match dec {
+        null => check(false, name),
+        _ => check(bytes_eq(dec ?? [], data), name),
+    }
+}
+
+fun roundtrip_b64(data: u8[], name: str): void {
+    val dec = Base64.decode(Base64.encode(data))
+    match dec {
+        null => check(false, name),
+        _ => check(bytes_eq(dec ?? [], data), name),
+    }
+}
+
+fun main(): void {
+    println("== std.codec Hex ==")
+    check(Hex.encode("abc".bytes()) == "616263", "Hex.encode abc")
+    check(Hex.encode([0, 255, 16]) == "00ff10", "Hex.encode boundary bytes")
+    check(Hex.encode([]) == "", "Hex.encode empty")
+    check(Hex.encode("~".bytes()) == "7e", "Hex.encode lowercase digits")
+    val d1 = Hex.decode("616263")
+    check(d1 != null && (d1 ?? []) as str == "abc", "Hex.decode 616263")
+    val d2 = Hex.decode("616263")
+    check(d2 != null && (d2 ?? []) as str == "abc", "Hex.decode accepts uppercase")
+    val de = Hex.decode("")
+    check(de != null && (de ?? []).len() == 0, "Hex.decode empty -> [] not null")
+    check_hex_null("616", "Hex.decode odd length -> null")
+    check_hex_null("6g", "Hex.decode bad char -> null")
+    roundtrip_hex([1, 2, 3, 4, 5], "Hex roundtrip 5 bytes")
+    roundtrip_hex([], "Hex roundtrip empty")
+
+    println("== std.codec Base64 ==")
+    check(Base64.encode([]) == "", "B64.encode empty")
+    check(Base64.encode("f".bytes()) == "Zg==", "B64.encode 1 byte -> pad==")
+    check(Base64.encode("fo".bytes()) == "Zm8=", "B64.encode 2 bytes -> pad=")
+    check(Base64.encode("foo".bytes()) == "Zm9v", "B64.encode 3 bytes -> no pad")
+    check(Base64.encode("foobar".bytes()) == "Zm9vYmFy", "B64.encode RFC4648 foobar")
+    check(Base64.encode("hello world!!".bytes()) == "aGVsbG8gd29ybGQhIQ==", "B64.encode 13 bytes")
+    val b1 = Base64.decode("Zm9vYmFy")
+    check(b1 != null && (b1 ?? []) as str == "foobar", "B64.decode RFC4648 foobar")
+    val b2 = Base64.decode("Zg==")
+    check(b2 != null && (b2 ?? []) as str == "f", "B64.decode with padding")
+    val b3 = Base64.decode("")
+    check(b3 != null && (b3 ?? []).len() == 0, "B64.decode empty -> []")
+    check_b64_null("Zg=", "B64.decode wrong length mod 4 -> null")
+    check_b64_null("Zm9v!", "B64.decode invalid char -> null")
+    check_b64_null("Z=9v", "B64.decode pad mid-stream -> null")
+    check_b64_null("Z===", "B64.decode triple pad -> null")
+    roundtrip_b64([], "B64 roundtrip empty")
+    roundtrip_b64("a".bytes(), "B64 roundtrip 1 byte")
+    roundtrip_b64("ab".bytes(), "B64 roundtrip 2 bytes")
+    roundtrip_b64("abc".bytes(), "B64 roundtrip 3 bytes")
+    roundtrip_b64("The quick brown fox jumps over the lazy dog".bytes(), "B64 roundtrip sentence")
+    roundtrip_b64([0, 255, 128, 1, 254, 127, 200, 42], "B64 roundtrip binary bytes")
+
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

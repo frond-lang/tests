@@ -1,0 +1,203 @@
+// llvm_smoke — 把 llvm-static CI 产的 LLVM-C.dll 经 Lib.embed 内嵌进程序,
+// 运行时释放加载,纯 Frond 驱动 LLVM C API 完成:
+//   句柄链往返 → 构建 add(a: i32, b: i32) -> i32 的 IR → verify →
+//   X86 target machine → emit .ll(文本断言)+ .o(产物断言)。
+// 这是"llvm 嵌到 frond 里"的完整闭环:本机零 LLVM 安装、零链接,全部
+// 能力来自构建期捕获的 52MB dll。
+// 资产:x86_64-pc-windows-msvc;非 windows 打印 SKIP(五平台共享库资产
+// 齐后放开,届时 triple 按 Info.os_name()/arch() 选)。
+import std.os.Info
+import std.io.Fs
+import std.io.Path
+import std.core.types.Str
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// read_cstr:把 C 世界的 char* 读成 Frond str —— 零 Rust 原语的组合:
+// strlen 定长 → memcpy(cbuf 目的缓冲写回,src 裸指针走 fall-through)
+// → u8[] as str(UTF-8 校验保留)。CRT 库按平台选(Windows=msvcrt)。
+fun read_cstr(crt: Lib, ptr: u64): Throw<str, FfiError> {
+    val strlen_fn: ForeignFn<u64> = crt.lookup("strlen", "cstr")?
+    val n = strlen_fn.call(ptr)?
+    val count = n as usize
+    val buf: u8[] = [0u8, ..count]
+    val memcpy_fn: ForeignFn<u64> = crt.lookup("memcpy", "cbuf, cstr, usize")?
+    memcpy_fn.call(buf, ptr, count)?
+    Ok(buf as str)
+}
+
+// 单槽指针原子约定(系统 C ABI 形态,非 stdlib 的 (data,len) 双槽):
+//   cstr = 裸 const char*(str 自动 NUL 结尾)
+//   cbuf = 裸缓冲区指针(标量数组序列化直给 + C 侧写回;传 0u64 = NULL)
+//   句柄一律 ForeignFn<u64> 承载并原样往返。
+fun build_and_emit(): Throw<void, FfiError> {
+    val lib = Lib.embed("assets/LLVM-C.dll")?
+    check(lib.has_symbol("LLVMContextCreate"), "embed(LLVM-C.dll) + has_symbol(ContextCreate)")
+
+    // ── context / module / i32 函数类型 ──
+    val ctx_create: ForeignFn<u64> = lib.lookup("LLVMContextCreate", "")?
+    val ctx = ctx_create.call()?
+    check(ctx != 0u64, "LLVMContextCreate() -> non-null ctx handle")
+
+    val mod_create: ForeignFn<u64> = lib.lookup("LLVMModuleCreateWithNameInContext", "cstr, u64")?
+    val module_ref = mod_create.call("add_module", ctx)?
+    check(module_ref != 0u64, "ModuleCreateWithNameInContext(cstr, ctx) -> non-null module")
+
+    val i32_create: ForeignFn<u64> = lib.lookup("LLVMInt32TypeInContext", "u64")?
+    val i32ty = i32_create.call(ctx)?
+    check(i32ty != 0u64, "Int32TypeInContext(ctx) -> non-null type handle")
+
+    // LLVMFunctionType(RetType, ParamTypes*, Count, IsVarArg):
+    // 参数类型数组走 cbuf 单槽(双槽数组原子会把 Count 顶错位)
+    val fn_type: ForeignFn<u64> = lib.lookup("LLVMFunctionType", "u64, cbuf, u32, u32")?
+    val params: u64[] = [i32ty, i32ty]
+    val fnty = fn_type.call(i32ty, params, 2u32, 0u32)?
+    check(fnty != 0u64, "FunctionType(i32, [i32, i32], 2, false) -> non-null")
+
+    // ── add 函数体 ──
+    val add_fn: ForeignFn<u64> = lib.lookup("LLVMAddFunction", "u64, cstr, u64")?
+    val fun_ref = add_fn.call(module_ref, "add", fnty)?
+    check(fun_ref != 0u64, "AddFunction(mod, \"add\", fnty) -> non-null")
+
+    val bb_fn: ForeignFn<u64> = lib.lookup("LLVMAppendBasicBlockInContext", "u64, u64, cstr")?
+    val entry = bb_fn.call(ctx, fun_ref, "entry")?
+    check(entry != 0u64, "AppendBasicBlockInContext -> non-null entry block")
+
+    val builder_fn: ForeignFn<u64> = lib.lookup("LLVMCreateBuilderInContext", "u64")?
+    val builder = builder_fn.call(ctx)?
+    val pos_end: ForeignFn<void> = lib.lookup("LLVMPositionBuilderAtEnd", "u64, u64")?
+    pos_end.call(builder, entry)?
+
+    val get_param: ForeignFn<u64> = lib.lookup("LLVMGetParam", "u64, u32")?
+    val a = get_param.call(fun_ref, 0u32)?
+    val b = get_param.call(fun_ref, 1u32)?
+    check(a != 0u64 && b != 0u64, "GetParam(fun, 0/1) -> non-null params")
+
+    val build_add: ForeignFn<u64> = lib.lookup("LLVMBuildAdd", "u64, u64, u64, cstr")?
+    val sum = build_add.call(builder, a, b, "sum")?
+    val build_ret: ForeignFn<void> = lib.lookup("LLVMBuildRet", "u64, u64")?
+    build_ret.call(builder, sum)?
+    check(true, "BuildAdd + BuildRet body assembled")
+
+    // ── verify(action=ReturnStatus, msg=NULL)──
+    val verify: ForeignFn<i32> = lib.lookup("LLVMVerifyModule", "u64, u32, cbuf")?
+    val vstat = verify.call(module_ref, 0u32, 0u64)?
+    check(vstat == 0, "VerifyModule -> 0 (valid IR)")
+
+    // ── IR 文本读回:PrintModuleToString(char*)→ read_cstr 组合 ──
+    val print_mod: ForeignFn<u64> = lib.lookup("LLVMPrintModuleToString", "u64")?
+    val ir_ptr = print_mod.call(module_ref)?
+    check(ir_ptr != 0u64, "PrintModuleToString -> non-null char*")
+    val crt = Lib.open("msvcrt.dll")?
+    match read_cstr(crt, ir_ptr) {
+        Ok(text) => {
+            check(Str.contains(text, "define i32 @add"), "IR text contains 'define i32 @add'")
+            check(Str.contains(text, "ret i32"), "IR text contains 'ret i32'")
+        },
+        Error(e) => check(false, "read_cstr ({e})"),
+    }
+    val free_msg: ForeignFn<void> = lib.lookup("LLVMDisposeMessage", "cstr")?
+    free_msg.call(ir_ptr)?
+    crt.close()
+
+    // ── X86 target machine(硬编码资产平台 triple;五平台化时按 Info 选)──
+    val init_info: ForeignFn<void> = lib.lookup("LLVMInitializeX86TargetInfo", "")?
+    init_info.call()?
+    val init_target: ForeignFn<void> = lib.lookup("LLVMInitializeX86Target", "")?
+    init_target.call()?
+    val init_mc: ForeignFn<void> = lib.lookup("LLVMInitializeX86TargetMC", "")?
+    init_mc.call()?
+    val init_asm: ForeignFn<void> = lib.lookup("LLVMInitializeX86AsmPrinter", "")?
+    init_asm.call()?
+
+    // GetTargetFromTriple(Triple, LLVMTargetRef* out, char** err):
+    // 两个出参都走 cbuf u64[] 写回
+    val target_of: ForeignFn<i32> = lib.lookup("LLVMGetTargetFromTriple", "cstr, cbuf, cbuf")?
+    val target_buf: u64[] = [0u64]
+    val err_buf: u64[] = [0u64]
+    val tstat = target_of.call("x86_64-pc-windows-msvc", target_buf, err_buf)?
+    check(tstat == 0 && target_buf[0] != 0u64, "GetTargetFromTriple -> 0, target ref written back")
+    check(err_buf[0] == 0u64, "GetTargetFromTriple err message stays NULL")
+
+    val tm_fn: ForeignFn<u64> = lib.lookup(
+        "LLVMCreateTargetMachine", "u64, cstr, cstr, cstr, u32, u32, u32")?
+    val tm = tm_fn.call(
+        target_buf[0], "x86_64-pc-windows-msvc", "generic", "", 2u32, 0u32, 0u32)?
+    check(tm != 0u64, "CreateTargetMachine -> non-null (opt=Default, reloc=Default)")
+
+    // ── emit:.s 汇编(FileType=0)+ .o 目标文件(FileType=1)──
+    // 注意 LLVMAssemblyFile 产出的是目标汇编(Windows 上 MASM 风格),
+    // 不是 .ll IR 文本;IR 文本要走 LLVMPrintModuleToString(char* 返回
+    // 需要 read-cstr 桥,后续批次)。
+    val emit: ForeignFn<i32> = lib.lookup("LLVMTargetMachineEmitToFile", "u64, u64, cstr, u32, cbuf")?
+    val estat_s = emit.call(tm, module_ref, "out/add.s", 0u32, 0u64)?
+    check(estat_s == 0, "EmitToFile(.s asm) -> 0")
+    val estat_o = emit.call(tm, module_ref, "out/add.o", 1u32, 0u64)?
+    check(estat_o == 0, "EmitToFile(.o) -> 0")
+
+    // ── 产物断言:.s 含 add 标签与 leal(Win64 前两参 rcx/rdx 相加);.o 非空 ──
+    match Fs.read_file(Path.from("out/add.s")).await() {
+        Ok(text) => {
+            check(Str.contains(text, "add:"), ".s asm contains 'add:' label")
+            check(Str.contains(text, "leal"), ".s asm contains leal (a+b lowered)")
+        },
+        Error(e) => check(false, "read back .s ({e})"),
+    }
+    val obj_bytes = Fs.read_file_bytes(Path.from("out/add.o")).await()?
+    val obj_len = obj_bytes.len()
+    check(obj_len > 64, ".o non-trivial object emitted")
+
+    // ── dispose 链 + 负向 ──
+    val tm_dispose: ForeignFn<void> = lib.lookup("LLVMDisposeTargetMachine", "u64")?
+    tm_dispose.call(tm)?
+    val b_dispose: ForeignFn<void> = lib.lookup("LLVMDisposeBuilder", "u64")?
+    b_dispose.call(builder)?
+    val mod_dispose: ForeignFn<void> = lib.lookup("LLVMDisposeModule", "u64")?
+    mod_dispose.call(module_ref)?
+    val ctx_dispose: ForeignFn<void> = lib.lookup("LLVMContextDispose", "u64")?
+    ctx_dispose.call(ctx)?
+    check(true, "dispose chain complete")
+
+    match lib.lookup("LLVMNopeNotASymbol9", "u64") {
+        Ok(_) => check(false, "lookup(bogus symbol) should fail"),
+        Error(_) => check(true, "lookup(bogus symbol) throws"),
+    }
+    match lib.lookup("LLVMContextCreate", "wat") {
+        Ok(_) => check(false, "lookup(bad sig atom) should fail"),
+        Error(_) => check(true, "lookup(bad sig atom) throws"),
+    }
+
+    lib.close()
+    Ok(void)
+}
+
+fun main(): void {
+    if Info.os_name() != "windows" {
+        println("SKIP: llvm_smoke asset is windows-msvc only (until unix dylib assets land)")
+        println("RESULT: ALL PASSED")
+        return
+    }
+    match build_and_emit() {
+        Ok(_) => {}
+        Error(e) => check(false, "build_and_emit should not fail: {e}"),
+    }
+    summary()
+}

@@ -1,0 +1,89 @@
+// qualified_types/Main.frond — 限定路径验收:注解位/trait 名位/模式位。
+// 覆盖:var/参数/返回值/字段/泛型实参/别名目标/std 全限定/自模块限定/
+// 撞名消歧(A.Point vs B.Point)/限定构造表达式/零参限定(带括号与不带)。
+import std.collections.List
+import A
+import B
+
+type P = A.Point
+
+type Wrap: A.Speaker = Wrap(pub inner: A.Rec) {
+    pub fun speak(): i64 { inner.speak() }
+}
+
+fun tk_val(k: A.TK): i64 {
+    match k {
+        A.TEf => 1
+        A.TId => 2
+    }
+}
+
+fun psum(p: A.Point): i64 {
+    match p {
+        A.Point(x, y) => x + y
+    }
+}
+
+fun qsum(q: B.Point): i64 {
+    match q {
+        B.Point(x, y, z) => x + y + z
+    }
+}
+
+fun mk(): A.Point { A.Point(3, 4) }
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun main(): void {
+    var p: A.Point = A.Point(3, 4)
+    check(p.x == 3 && p.y == 4, "var annotation qualified")
+
+    var q: B.Point = B.Point(1, 2, 3)
+    check(q.z == 3, "clash B.Point three fields")
+    check(qsum(B.Point(1, 2, 3)) == 6, "clash B ctor pattern")
+    check(psum(A.Point(10, 20)) == 30, "clash A ctor pattern")
+
+    val n: i64 = 41
+    var bx: A.Box<i64> = A.Box(n)
+    check(bx.v + 1 == 42, "qualified generic i64")
+
+    var sb: A.Box<str> = A.Box("hey")
+    check(sb.v == "hey", "qualified generic str")
+
+    var xs: std.collections.List<i64> = List.empty()
+    xs.push(7)
+    xs.push(8)
+    check(xs.len() == 2 && (xs.get(0) ?? -1) == 7, "std.collections.List<i64>")
+
+    var a1: P = A.origin()
+    check(a1.x == 0 && a1.y == 0, "alias to qualified")
+
+    check(tk_val(A.TEf) == 1, "qualified nullary pattern")
+    check(tk_val(A.TEf()) == 1, "qualified nullary ctor with parens")
+
+    check(Wrap(A.Rec(5)).speak() == 50, "type decl bound A.Speaker")
+
+    check(A.self_qualified().x == 7, "self-module qualified")
+
+    check(mk().y == 4, "qualified return type")
+
+    summary()
+}

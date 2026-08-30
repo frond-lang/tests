@@ -1,0 +1,7 @@
+// EXPECT: cannot pass a nullable value
+fun want(v: i32): i32 { v + 1 }
+
+fun main(): void {
+    val x: i32? = 41
+    println("{want(x)}")
+}

@@ -1,0 +1,7 @@
+// EXPECT: '!' is logical not and requires a bool operand
+fun main(): void {
+    val count: i32 = 3
+    if !count {
+        println("never")
+    }
+}

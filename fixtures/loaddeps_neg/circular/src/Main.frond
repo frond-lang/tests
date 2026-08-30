@@ -1,0 +1,7 @@
+// circular — 1C 差分夹具:A↔B 循环 import → circular 错误路径。
+
+import A
+
+fun main(): void {
+    println("unreachable")
+}

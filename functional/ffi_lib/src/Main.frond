@@ -42,6 +42,10 @@ fun happy_path(): Throw<void, FfiError> {
     check(k32.has_symbol("GetStdHandle"), "has_symbol(GetStdHandle) = true")
     check(!k32.has_symbol("ZzNotARealSymbol9"), "has_symbol(bogus) = false")
 
+    // ── address_of: raw symbol address (bio callbacks / JIT targets) ──
+    check(k32.address_of("GetStdHandle") != 0u64, "address_of(GetStdHandle) != 0")
+    check(k32.address_of("ZzNotARealSymbol9") == 0u64, "address_of(bogus) = 0")
+
     // ── lookup + call: scalar return ──
     val get_std_handle: ForeignFn<u64> = k32.lookup("GetStdHandle", "i32")?
     val h = get_std_handle.call(-11i32)?

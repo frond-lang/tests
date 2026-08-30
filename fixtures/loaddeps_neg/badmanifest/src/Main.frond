@@ -1,0 +1,5 @@
+// badmanifest — 1C 差分夹具:Root.toml 的 name 非字符串 → root=bad。
+
+fun main(): void {
+    println("ok")
+}

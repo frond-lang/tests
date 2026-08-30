@@ -1,0 +1,1 @@
+pub type TDK = | TAdt | TRecord | TAlias | TNewtype

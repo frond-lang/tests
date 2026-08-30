@@ -1,0 +1,37 @@
+// mod8/Parse.frond — 案 8 素材:用户模块与 std 模块**同短名**(本模块名
+// Parse 撞 std.json.Parse)。短键 "Parse.parse" 双注册,任何按字符串短键
+// 重解析的层都会二义/错绑;根修后限定导入(mod8.Parse)下的短名调用按
+// sema 记录的导入解析模块路径走全路径键。
+
+// 哨兵枚举:限定导入下「模块.枚举变体」值访问(Parse.Eof 形态)曾
+// 错绑成 ModuleRef 垃圾字段读(ir/Builder/Access.rs 尾段匹配根修)。
+pub type Tk = Tk(pub kind: Kind)
+
+pub type Kind = | A | B | Eof
+
+pub fun tokenize(s: str): Tk[] {
+    var out: Tk[] = []
+    var i: usize = 0
+    while i < s.len() {
+        val c = s[i]
+        if c == "a" {
+            out = out ++ [Tk(A)]
+        } else {
+            out = out ++ [Tk(B)]
+        }
+        i = i + 1
+    }
+    out ++ [Tk(Eof)]
+}
+
+// 与 std.json.Parse.parse 同名同短键的函数。
+pub fun parse(s: str): i64 {
+    val toks = tokenize(s)
+    var n: i64 = 0
+    var i: usize = 0
+    while !(toks[i].kind == Eof) {
+        n = n + 1
+        i = i + 1
+    }
+    n
+}

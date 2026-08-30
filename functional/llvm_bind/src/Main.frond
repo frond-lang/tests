@@ -1,0 +1,101 @@
+// llvm_bind — Frond/libs/llvm 绑定层端到端验收器(五平台):
+// 经 Lib.embed 内嵌平台原生 LLVM 共享库,用绑定层 API(裸 u64 句柄形态)
+// 完成全链:build add(a: i32, b: i32) -> i32 → verify → IR 文本 →
+// emit .s/.o → 产物断言。
+// 资产:assets/llvm-native.bin —— 文件名各平台统一,内容由预置方放置
+// (Windows=LLVM-C.dll / Linux=libLLVM.so / macOS=libLLVM.dylib);
+// LoadLibrary/dlopen 按内容识别,后缀无关。
+// 绑定层 init_host_target/host_triple 运行时自适应,本套件源码零平台分支。
+import std.os.Info
+import std.io.Fs
+import std.io.Path
+import std.core.types.Str
+import Llvm
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun build_add(): Throw<void, FfiError> {
+    val lib = Lib.embed("assets/llvm-native.bin")?
+    Llvm.init_host_target(lib)?
+
+    val ctx = Llvm.create_context(lib)?
+    defer Llvm.dispose_context(lib, ctx)
+    val module = Llvm.create_module(lib, "bind_add", ctx)?
+    defer Llvm.dispose_module(lib, module)
+
+    val i32ty = Llvm.i32_type(lib, ctx)?
+    val params: u64[] = [i32ty, i32ty]
+    val fnty = Llvm.function_type(lib, i32ty, params, false)?
+    val fun_ref = Llvm.add_function(lib, module, "add", fnty)?
+    // append_block 收函数值引用(fun_ref),不是 module
+    val entry = Llvm.append_block(lib, ctx, fun_ref, "entry")?
+
+    val builder = Llvm.create_builder(lib, ctx)?
+    defer Llvm.dispose_builder(lib, builder)
+    Llvm.position_builder_at_end(lib, builder, entry)?
+    val a = Llvm.get_param(lib, fun_ref, 0u32)?
+    val b = Llvm.get_param(lib, fun_ref, 1u32)?
+    val sum = Llvm.build_add(lib, builder, a, b, "sum")?
+    Llvm.build_ret(lib, builder, sum)?
+    check(true, "add body assembled via bindings")
+
+    val ok = Llvm.verify_module(lib, module)?
+    check(ok, "module verifies (binding verify)")
+
+    val ir = Llvm.print_module_ir(lib, module)?
+    check(Str.contains(ir, "define i32 @add"), "print_module_ir contains 'define i32 @add'")
+    check(Str.contains(ir, "ret i32"), "print_module_ir contains 'ret i32'")
+
+    val triple = Llvm.host_triple()
+    check(triple.len() > 0, "host_triple resolves ({triple})")
+    val target = Llvm.get_target(lib, triple)?
+    val tm = Llvm.create_target_machine(lib, target, triple, "generic", "", 2u32, 0u32, 0u32)?
+    defer Llvm.dispose_target_machine(lib, tm)
+
+    Llvm.emit_to_file(lib, tm, module, "out/bind_add.s", false)?
+    Llvm.emit_to_file(lib, tm, module, "out/bind_add.o", true)?
+    check(true, "emit .s/.o via bindings")
+
+    match Fs.read_file(Path.from("out/bind_add.s")).await() {
+        Ok(text) => {
+            check(Str.contains(text, "add:"), ".s asm contains 'add:' label (all archs)")
+            if Info.arch() == "aarch64" {
+                check(Str.contains(text, "add"), ".s asm contains add (aarch64 lowering)")
+            } else {
+                check(Str.contains(text, "leal"), ".s asm contains leal (x86 lowering)")
+            }
+        },
+        Error(e) => check(false, "read back .s ({e})"),
+    }
+    val obj = Fs.read_file_bytes(Path.from("out/bind_add.o")).await()?
+    check(obj.len() > 64, ".o non-trivial object emitted")
+
+    lib.close()
+    Ok(void)
+}
+
+fun main(): void {
+    match build_add() {
+        Ok(_) => {}
+        Error(e) => check(false, "build_add should not fail: {e}"),
+    }
+    summary()
+}

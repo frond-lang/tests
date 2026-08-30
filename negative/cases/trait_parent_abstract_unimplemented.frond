@@ -1,0 +1,8 @@
+// 父 trait 抽象要求:实现子 trait 必须实现父抽象方法(或继承到默认)。
+// EXPECT: does not implement trait method
+trait Animal2 { fun speak(): str }
+trait Pet2(Animal2) { fun owner(): str }
+type Robot: (Pet2) = Robot(o: str) {
+    fun owner(): str { o }
+}
+fun main(): void { println("x") }

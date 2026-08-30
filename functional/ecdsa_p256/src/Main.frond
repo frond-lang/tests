@@ -1,0 +1,64 @@
+// ecdsa_p256 - ECDSA P-256 verification kernel acceptance.
+// Vectors generated with the Python cryptography library (fresh random
+// keys, real signatures over random messages); every other case is the
+// same signature with a tampered digest, which must fail closed.
+import std.crypto.EcdsaP256
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun hex_bytes(s: str): u8[] {
+    match std.encoding.Hex.decode(s) {
+        null => [],
+        b => b,
+    }
+}
+
+fun run_case(idx: i32, pub_hex: str, hash_hex: str, rs_hex: str, expect: bool): void {
+    val pk = hex_bytes(pub_hex)
+    val h = hex_bytes(hash_hex)
+    val rs = hex_bytes(rs_hex)
+    val got = match EcdsaP256.verify(pk, h, rs) {
+        Ok(v) => v,
+        Error(e) => { println("  error: {e.message}"); false },
+    }
+    if got == expect {
+        println("  PASS: vector {idx} (expect {expect})")
+    } else {
+        failures = failures + 1
+        println("  FAIL: vector {idx} (expected {expect}, got {got})")
+    }
+}
+
+fun main(): void {
+    run_case(0, "b99a09b681c0da4062f5846cff95f037e04449b363a74683abd695e331c17cfc5c72a50bf68479f6fa4c731b2a7b5bea858e2f7cf931cf8005b9dbf7d7d4c52a", "773e35a4ac0ff9296fb46f3af8c6371dc6eacb43aa2cf8a0d42879083f5e0fac", "1e4e4fd64093866055ef5e0d2b9fdfa3724f95df601993a1dd5374ff95517a168383ff14d0d39cb446a1768a6601e6e2165db81e4cac2e8e9dac6560f38711f9", true)
+    run_case(1, "b99a09b681c0da4062f5846cff95f037e04449b363a74683abd695e331c17cfc5c72a50bf68479f6fa4c731b2a7b5bea858e2f7cf931cf8005b9dbf7d7d4c52a", "073e35a4ac0ff9296fb46f3af8c6371dc6eacb43aa2cf8a0d42879083f5e0fac", "1e4e4fd64093866055ef5e0d2b9fdfa3724f95df601993a1dd5374ff95517a168383ff14d0d39cb446a1768a6601e6e2165db81e4cac2e8e9dac6560f38711f9", false)
+    run_case(2, "d102a9ca7ae0e8f96df313774e8b80ef487051a0f960aae974acf817c52ff1443bd1d13919f68de0b368d1a4d93d000895478650c65ada49d12868a82e871cb0", "cf6b9fcc25a32de4e67a9ab979417295256028f0cfac17d0be20444e5860f082", "d4a73ce2a010ba7904697f1dc92e232a75895a866bbfbfd213baccd7dc8c4f778ac2bdd1287a0c95f75e7028b316d39a97a475116ad12f41cf3459b5aa16dd12", true)
+    run_case(3, "d102a9ca7ae0e8f96df313774e8b80ef487051a0f960aae974acf817c52ff1443bd1d13919f68de0b368d1a4d93d000895478650c65ada49d12868a82e871cb0", "0f6b9fcc25a32de4e67a9ab979417295256028f0cfac17d0be20444e5860f082", "d4a73ce2a010ba7904697f1dc92e232a75895a866bbfbfd213baccd7dc8c4f778ac2bdd1287a0c95f75e7028b316d39a97a475116ad12f41cf3459b5aa16dd12", false)
+    run_case(4, "415119b7fd97ab42aa723283a1f1dc68a919c9733294707e2304e24c1ae7799b5a21e867720313e35f005baa524e7a6e80587eff048a6f9eb3280c959ae3755a", "44ad9e1f5b747fe97b2e5ecf95ef80a71f332800cec5d68c651a7828df003faf", "64c2843775c0347a4a58a5869d27d50199183cbe9ab3d61a3903a7f359d2e9b120bb17d3ce2e4890f6a6bb6072cc8b68d23753f3a0b76eb1db68982f24c143ed", true)
+    run_case(5, "415119b7fd97ab42aa723283a1f1dc68a919c9733294707e2304e24c1ae7799b5a21e867720313e35f005baa524e7a6e80587eff048a6f9eb3280c959ae3755a", "04ad9e1f5b747fe97b2e5ecf95ef80a71f332800cec5d68c651a7828df003faf", "64c2843775c0347a4a58a5869d27d50199183cbe9ab3d61a3903a7f359d2e9b120bb17d3ce2e4890f6a6bb6072cc8b68d23753f3a0b76eb1db68982f24c143ed", false)
+    run_case(6, "2fc901771c48369d48348335b2d086e6c1b320bddbca63ef0247d91153e8a7e3ae282b07acaf55adeb5426cc3e82eab7cc8f11d8a19b9060c3bbaa2585dffedf", "7b0d09c52ada708313cf50aef40c06eaeb898e5e741fd25d4b2d6c2bc0c4e1a3", "59262d2a60e19a159922210a620f939f3134019baf6ed8b6a1e0321a12cce7e9d1425a852c09abd1dbc17c2d9837e3b84f177b0ed33611feccd560c4b51af2ba", true)
+    run_case(7, "2fc901771c48369d48348335b2d086e6c1b320bddbca63ef0247d91153e8a7e3ae282b07acaf55adeb5426cc3e82eab7cc8f11d8a19b9060c3bbaa2585dffedf", "0b0d09c52ada708313cf50aef40c06eaeb898e5e741fd25d4b2d6c2bc0c4e1a3", "59262d2a60e19a159922210a620f939f3134019baf6ed8b6a1e0321a12cce7e9d1425a852c09abd1dbc17c2d9837e3b84f177b0ed33611feccd560c4b51af2ba", false)
+    run_case(8, "a1f237fd4117f824ddb06e035b1a92a5465a39f9a7badd4119ede313ee674c0beb7f76ba0069420c7d7305dbf249f622c443b840fb54ce3ba5f817e91792ba1b", "39db9bfdaa662fc622984d0b782b7a29e3ada5c8effb857f6c4210c25525d028", "0ff0220db15574b43fe0d4a5a71382ba99678a6cbcee3e56216973a8ffd530b3d7b8c7eb15de85f0fee84ad663921c1b42937cbc85ab018dd3697e6bf2cc775c", true)
+    run_case(9, "a1f237fd4117f824ddb06e035b1a92a5465a39f9a7badd4119ede313ee674c0beb7f76ba0069420c7d7305dbf249f622c443b840fb54ce3ba5f817e91792ba1b", "09db9bfdaa662fc622984d0b782b7a29e3ada5c8effb857f6c4210c25525d028", "0ff0220db15574b43fe0d4a5a71382ba99678a6cbcee3e56216973a8ffd530b3d7b8c7eb15de85f0fee84ad663921c1b42937cbc85ab018dd3697e6bf2cc775c", false)
+    run_case(10, "225bd8f1fc152c0d9bf99ec83a1299001323c7c8f95499f645ee6b9b4e3ccb1bf7f8dff627652c30dfcb9d12f5064d303feb60098cc4f9adaa2d2867961447b7", "88ecbec597cba209076df96679b905a7179381603e0b8e40bedc6db9f1b942b6", "2a6ff986bf30dfd27c18ff31b5bf6f12601ab43d881186390a0b5ec8167a37339010c95f9c7d633589166520f34601c2bbf97f3c91bf60b5f324c3ee04f77292", true)
+    run_case(11, "225bd8f1fc152c0d9bf99ec83a1299001323c7c8f95499f645ee6b9b4e3ccb1bf7f8dff627652c30dfcb9d12f5064d303feb60098cc4f9adaa2d2867961447b7", "08ecbec597cba209076df96679b905a7179381603e0b8e40bedc6db9f1b942b6", "2a6ff986bf30dfd27c18ff31b5bf6f12601ab43d881186390a0b5ec8167a37339010c95f9c7d633589166520f34601c2bbf97f3c91bf60b5f324c3ee04f77292", false)
+    run_case(12, "c824d53cd43350ee094e368ee8940f386cc7e658d9835812d8a178f26eda17e3f3b2860892cb6cb1d17356d95f7a4c5c90b970c127d13b2fc8e376092aa79ba9", "09df8a45bb48ff06ebe0002a122365c1bab48e54d2be93e0d4e22a45f9f10fc7", "d345973b928ac30ea1733e31aea12e71168ff557333a160d869bd315d071127af5a9cfed03dfbde30637234d21994b7fba94b9df4eca1e9b0332d9545d091574", true)
+    run_case(13, "c824d53cd43350ee094e368ee8940f386cc7e658d9835812d8a178f26eda17e3f3b2860892cb6cb1d17356d95f7a4c5c90b970c127d13b2fc8e376092aa79ba9", "19df8a45bb48ff06ebe0002a122365c1bab48e54d2be93e0d4e22a45f9f10fc7", "d345973b928ac30ea1733e31aea12e71168ff557333a160d869bd315d071127af5a9cfed03dfbde30637234d21994b7fba94b9df4eca1e9b0332d9545d091574", false)
+    run_case(14, "3c8e9a9344e9d29fd1568e9fb21123505e57895d003e50b51d6f7fc5522f410a0c69b14ea4970208c05fc28f06b8c109ab668b12ece57d0c1eab7032e5c27e61", "692110aef633004a371357db407accf422dfddb81a907c779d5dbe3412c515de", "3a26af33ddb8c313c9ba3d1aa74c8dc810b8c7a60b251f981d2a4460f304e92a1289a8227c62047be7294e2407aaecb32c8f7f1dcc24ef3ca1058512bdf80fca", true)
+    run_case(15, "3c8e9a9344e9d29fd1568e9fb21123505e57895d003e50b51d6f7fc5522f410a0c69b14ea4970208c05fc28f06b8c109ab668b12ece57d0c1eab7032e5c27e61", "092110aef633004a371357db407accf422dfddb81a907c779d5dbe3412c515de", "3a26af33ddb8c313c9ba3d1aa74c8dc810b8c7a60b251f981d2a4460f304e92a1289a8227c62047be7294e2407aaecb32c8f7f1dcc24ef3ca1058512bdf80fca", false)
+    // malformed sizes throw
+    match EcdsaP256.verify([0u8, ..32], [0u8, ..32], [0u8, ..64]) {
+        Ok(_) => { failures = failures + 1; println("  FAIL: short pubkey should throw") },
+        Error(_) => println("  PASS: malformed input throws"),
+    }
+    if failures == 0 { println("RESULT: ALL PASSED") } else { println("RESULT: {failures} FAILED") }
+}

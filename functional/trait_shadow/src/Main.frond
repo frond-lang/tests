@@ -1,0 +1,80 @@
+// trait_shadow — trait 名空间模块作用域化的验收套件。
+//
+// 本地 `trait Writer` 遮蔽 builtin io 的 Writer 裸名：注册为模块限名
+// (`src.Main.Writer`)，witness/trait 形参动态分派/子 trait 继承全链路按
+// 限名走；builtin 的 reflect 机制（trait Type 的 .type_name() 等）不受
+// 本地 trait 遮蔽影响。
+//
+// 注：默认方法经 trait 形参直呼是既有已知洞（见 functional/traits 注释），
+// 本套件用引擎支持的形态：抽象方法显式实现 + trait 形参 vtable 分派 +
+// 子 trait 默认方法内经 this 的抽象分派。
+
+var failures: i32 = 0
+
+fun check(ok: bool, label: str): void {
+    if ok {
+        println("  PASS: {label}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {label}")
+    }
+}
+
+// 本模块自己的 Writer —— 与 builtin io/Writer.frond 同名。
+trait Writer {
+    fun label(): str
+    // 默认方法经 trait 形参动态分派（witness 槽位只装类型自有方法，
+    // vtable fallback 落到特化的 trait-default 子图）。
+    fun dump(): str {
+        "[" + label() + "]"
+    }
+}
+
+// 子 trait：默认方法内经 this 调抽象方法（实例化后按具体类型分派）。
+trait Rewriter(Writer) {
+    fun shout(): str {
+        label() + "!"
+    }
+}
+
+type Tag: (Writer) = Tag(n: i64) {
+    pub fun label(): str { "tag" }
+}
+
+type Tag2: (Rewriter) = Tag2(m: i64) {
+    pub fun label(): str { "tag2" }
+}
+
+// trait 形参：具体 Tag/Tag2 值流入 → vtable fallback 动态分派。
+fun render(w: Writer): str {
+    w.label()
+}
+
+fun render2(w: Writer): str {
+    w.dump()
+}
+
+fun main(): void {
+    // ── 1. 遮蔽 trait 的实现经 trait 形参动态分派 ──
+    val t = Tag(7)
+    check(render(t) == "tag", "shadowing trait dispatches via trait param")
+
+    check(render2(t) == "[tag]", "trait DEFAULT method via trait param (vtable fallback)")
+
+    // ── 2. 子 trait 见证覆盖父 trait 形参（见证传递性）──
+    val t2 = Tag2(9)
+    check(render(t2) == "tag2", "child-trait witness covers parent param")
+
+    // ── 3. 子 trait 默认方法（体内抽象方法按具体类型分派）──
+    check(t2.shout() == "tag2!", "child-trait default dispatches abstract")
+
+    // ── 4. builtin reflect 机制不受本地 trait 遮蔽影响 ──
+    check(t.type_name() == "Tag", "builtin trait Type machinery intact")
+    check(t2.repr() == "Tag2(m: 9)", "builtin repr intact")
+
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

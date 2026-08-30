@@ -1,0 +1,7 @@
+// super 无父默认可用:声明点拒绝。
+// EXPECT: no parent trait of 'Solo2' provides a default
+trait Solo2 {
+    fun m(): str { "solo" }
+    fun n(): str { super.m() + "!" }
+}
+fun main(): void { println("x") }

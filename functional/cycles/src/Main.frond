@@ -1,0 +1,31 @@
+// 功能验证：循环引用不再泄漏（注册表+根集标记清除；Single 模式帧边界压力回收
+// + 全模式 teardown 清扫）。注：Multi 模式 await-循环间歇挂死已于 2026-08-23
+// 完全修复（六根因+静止清扫自愈），循环形态回归锚见 await_loop 套件。
+type Node = Node(next: Node?)
+
+fun spin(n: i32): void {
+    var i = 0
+    while i < n {
+        val x = Node(null)
+        val y = Node(x)
+        x.next = y
+        val a: Node?[] = [y]
+        i = i + 1
+    }
+}
+
+async fun make_cycle(): Node {
+    val x = Node(null)
+    val y = Node(x)
+    x.next = y
+    y
+}
+
+fun main(): void {
+    // Single 模式（同步程序）：mid-run 压力回收反复触发
+    spin(200000)
+    // Multi 模式：join-runtime result 根 + teardown 清扫
+    val r = make_cycle().await()
+    val _ = r.next
+    println("RESULT: ALL PASSED")
+}

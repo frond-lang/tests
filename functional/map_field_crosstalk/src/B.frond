@@ -1,0 +1,1 @@
+pub type Ty = | TAdt(u32) | TRecord(u32) | TAlias(u32) | TNewtype(u32)

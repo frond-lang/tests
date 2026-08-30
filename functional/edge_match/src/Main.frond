@@ -33,9 +33,9 @@ type Tree =
     | Leaf
     | Node(i32, Tree, Tree)
 
-type List =
+type IntList =
     | Nil
-    | Cons(i32, List)
+    | Cons(i32, IntList)
 
 // ─── 多变体带数据 ───
 type Shape =
@@ -60,7 +60,7 @@ fun treeSum(t: Tree): i32 {
     }
 }
 
-fun listLen(l: List): i32 {
+fun listLen(l: IntList): i32 {
     match l {
         Nil => 0
         Cons(_, t) => 1 + listLen(t)
@@ -321,7 +321,7 @@ fun main(): void {
     check(treeSum(Node(1, Node(2, Leaf, Leaf), Node(3, Leaf, Leaf))) == 6, "tree sum")
 
     // match 链表头
-    fun headOr(l: List, default: i32): i32 {
+    fun headOr(l: IntList, default: i32): i32 {
         match l {
             Nil => default
             Cons(h, _) => h
@@ -438,7 +438,7 @@ fun main(): void {
 
     // ─── 19. 大胆：match on 链表深递归（10 层）───
     println("--- Match on Deep Recursive List ---")
-    var deep: List = Nil
+    var deep: IntList = Nil
     var di: i32 = 0
     while di < 10 {
         deep = Cons(di, deep)
@@ -446,7 +446,7 @@ fun main(): void {
     }
     check(listLen(deep) == 10, "10-deep list length")
     // match 第一个元素
-    fun firstOf(l: List): i32 {
+    fun firstOf(l: IntList): i32 {
         match l {
             Nil => -1
             Cons(h, _) => h

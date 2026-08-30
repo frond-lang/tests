@@ -1,0 +1,8 @@
+// 模块作用域类型解析已落地：用户类型遮蔽 std 裸名是合法语义
+// （功能证明见 functional/type_shadow —— 本地 `type List` 与
+// std.collections.List 在运行时按模块限定名区分身份）。
+// 仍然非法的是：同一模块内重复定义同名类型。
+// EXPECT: duplicate type definition
+type List = | NilY | ConsY(i32, List) { }
+type List = | NilZ | ConsZ(i64, List) { }
+fun main(): void { println("x") }

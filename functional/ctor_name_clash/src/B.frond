@@ -1,0 +1,3 @@
+// ctor_name_clash/B.frond — 同名一元变体(TAdt(u32) 等),制造裸名 contested。
+
+pub type Ty = | TAdt(u32) | TRecord(u32) | TAlias(u32) | TNewtype(u32)

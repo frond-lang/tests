@@ -1,0 +1,5 @@
+// Store/Memory.frond — 1C 差分夹具:pack 声明的子模块文件。
+
+pub fun store_value(): i64 {
+    7
+}

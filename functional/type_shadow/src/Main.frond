@@ -1,0 +1,91 @@
+// type_shadow — 模块作用域类型解析（运行时类型名 mangling）的验收套件。
+//
+// 本地 `type List` 遮蔽 std.collections.List 的裸名：两者在同一模块共存，
+// 值的身份按模块限定名区分（相等 / match / 反射），显示名剥掉模块前缀。
+// 这是"平表时代必须报错"（原负向用例 type_name_collides_std）的转正证明。
+
+import std.collections.List
+
+// 本模块自己的链表 ADT —— 裸名与 std.collections.List 相同。
+type List = | Nil | Cons(i64, List) {
+
+    fun sum(): i64 {
+        match this {
+            Nil => 0
+            Cons(h, t) => h + t.sum()
+        }
+    }
+
+    fun len(): i64 {
+        match this {
+            Nil => 0
+            Cons(_, t) => 1 + t.len()
+        }
+    }
+}
+
+fun from_range(n: i64): List {
+    if n <= 0 { Nil } else { Cons(n, from_range(n - 1)) }
+}
+
+// 记录 + newtype 的显示名也剥前缀。
+type Point = Point(x: i64, y: i64)
+type Meters = Meters(f64)
+
+var failures: i32 = 0
+
+fun main(): void {
+    // ── 1. 自有 List：构造 / match / 递归方法 ──
+    val own = from_range(5)
+    check(own.len() == 5, "own List len 5")
+    check(own.sum() == 15, "own List sum 15")
+
+    var acc: i64 = 0
+    match own {
+        Cons(h, t) => { acc = h + t.len() }
+        Nil => { acc = -1 }
+    }
+    check(acc == 9, "match on own List binds ctor fields")
+
+    // ── 2. std List 与遮蔽类型同时可用 ──
+    val xs = List.empty()
+    xs.push(10i64)
+    xs.push(20i64)
+    xs.push(30i64)
+    check(xs.len() == 3, "std List still works beside the shadowing type")
+    check(xs.get(1) == 20i64, "std List get(1) == 20")
+
+    // ── 3. 身份：同名类型互不相等（模块限定名区分）──
+    check(Cons(1, Nil) == Cons(1, Nil), "own List deep equality")
+    check(Cons(1, Nil) != Nil, "own List inequality by ctor")
+    check(Cons(2, Nil) != Cons(3, Nil), "own List inequality by field")
+
+    // ── 4. 显示名剥模块前缀（reflect 用户可见面不变）──
+    check(own.type_name() == "List", "own List type_name() displays bare name")
+    check(Cons(1, Nil).type_name() == "List", "ADT value type_name() bare")
+    val p = Point(3, 4)
+    check(p.type_name() == "Point", "record type_name() bare")
+    check(Cons(1, Nil).repr() == "Cons(_: 1, _: Nil)", "ADT repr uses ctor display (bare-call form)")
+    val m = Meters(1.5)
+    check(m.type_name() == "Meters", "newtype type_name() bare")
+    check(m.repr() == "Meters(1.5)", "newtype repr display")
+
+    // ── 5. 数组元素类型名也走显示名 ──
+    val pts = [Point(1, 2), Point(3, 4)]
+    check(pts.type_name() == "Point[]", "record array element type display")
+
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}
+
+fun check(ok: bool, label: str): void {
+    if ok {
+        println("  PASS: {label}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {label}")
+    }
+}

@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-08-26 主动探测发现（#104）
+
+> 背景：用户报告"nullable 解包似有缺陷"。探针证实：`try_widen_unify` 对 Nullable/Throw 的兼容规则**双向对称**（"nullable<T> is compatible with T" 注释直书解包方向放行），三条隐式通道（声明注解/函数参数/函数返回）静默放行 `T? → T` 与 `Throw<T,E> → T`，且不生成任何解包代码——null/Err 载荷原样流入普通槽位，运行时零诊断数据损坏。显式解包原语（`??`/`!`/`?`/`?.`）本身行为正确，缺陷全在隐式通道。
+
+### Bug #104：nullable/throw 解包泄漏（P0，静默数据损坏）
+
+- **现象**（全部复现）：
+  1. `val a: i32 = x`（x: `i32?` = null）编译通过，`a == null` 为 true，`a + 1` 得 **1**（null 归 0 参与算术）
+  2. `want_i32(risky(true))`（参数 `i32`，实参 `Throw<i32,str>` 的 `Ok(100)`）返回 **1** 而非 101——成功值整个丢失
+  3. `fun f(): i32 { val x: i32? = null; x }` 静默返回 null
+  4. 对照证明是缺陷非设计：赋值语句通道（`q.v = n` / `arr[0] = n`）一直正确拒绝（"cannot assign 'i32?' to 'i32'"）
+- **根因**：`Unify.rs try_widen_unify` 的 `(Nullable<T>, T)` / `(Throw<T,E>, T)` 分支无检查放行；声明/参数/return 检查点共用该函数。
+- **修复**（五件）：
+  1. `unwrap_leak_kind(target, value)` 公共检查（Unify.rs）：值带 Nullable/Throw 包装而目标不带 → 泄漏；目标也带包装或含 TypeVar 时放行（推断未完）
+  2. 三通道接线：`check_local_decl`（声明，保留字面量→nullable 重推链）、`unify_call_arg` + CallInfer 直检分支（参数）、`unify_return_type`（return，此处 add_error 因调用方失败只重排队不报错）
+  3. 豁免：null **字面量**传参（Bug #159 null-join 设计域，`pick(5, null)`，AST 判据）；`Throw<void, E>` 尾调用进 void 函数（无值载荷，std 惯用）
+  4. **连带修 A——FlowNarrow 字段窄化死代码激活**：`if u.age != null` 的 NonNull fact 此前因 `env.lookup("u.age")` 查不到而从不建立；`analyze_null_check_facts` 改为 InferContext 方法，字段路径经 `resolve_field_path`（env 根变量 + sema_result 类型定义字段链）解析；FieldAccess 推断侧接 `lookup_narrowed(path)`
+  5. **连带修 B——match 绑定臂窄化**：Nullable scrutinee 上 null 臂之后的绑定臂收窄为 inner（std Path 惯用 `match fname { null => .., name => .. }`，此前靠泄漏放行活着）；连带修 C——Nullable scrutinee 上构造器模式子模式绑定：`refine_constructor_pattern` 的兼容 unify 先剥 Nullable（否则 `unify(J, J?)` 失败致 `DObj(entries)` 错绑 `J?`）
+- **stdlib 适配**：`std.json` 的 `get`/`as_*` 提取器参数 `Json` → `Json?`（内部本有 `_ => null` 兜底，语义更准）；dogfood_json 的 `j_*` 同理。
+- **验证**：负向新增 nullable_leak_decl/param/return + throw_leak_decl（62 全过）；nullable_types 新增正向保护（字段窄化绑 i32/match 绑定臂窄化/Throw<void> 豁免）；全量 86 功能 + 62 负向 + perf 基线持平。后续补：`unify_return_type` 加 line/column 参数（Async 展开递归透传；ModuleEnv 三处传 decl_span、StmtInfer return 语句传 stmt span），return 泄漏诊断从 `0:0` 变为函数声明位置。
+
+---
+
 ## P0/P1 审查修复（R1-R11）
 
 以下修复基于对 P0/P1 bug 修复代码的系统审查，解决特判、workaround、fallback、精度损失和不完整实现问题。
@@ -2484,3 +2507,42 @@
   ```
 - **怀疑方向**:LoopBody 分支子图帧对外层变量的 home 槽位/WriteBack(#100 同族):循环体子图对迭代器 record 的引用在迭代间被重新物化,`&next` 内的字段写回(CF_RECORD_FIELD_SET)落在子图局部副本上,未写回外层帧。
 - **临时规避**:用 for-in 驱动迭代器;collections 测试已按此约定(std/collections 的活语义测试均为 for-in 形式)。
+
+## BUG #105(2026-08-28 立案):多参 ADT 模式绑定字段错位(inline 布局敏感)
+
+**现象**:frondc 1E 的 populate_decl 里 `match decl { TypeDeclD(_, name,
+tps, bases, _, def, methods) => ... }` —— 所有命名绑定的类型/值都拿到
+**field 5(def: TypeD)**(methods.len() 报 receiver=TypeD 的 IR error,
+或运行期 match fallback panic "non-exhaustive match")。ImportDeclD
+(3 参)同文件同形态工作正常。
+
+**已排除**(完整调查链):
+- sema 注册正确(debug --stage sema 的 ctor 行字段序全对:#1 str #6 Md[])
+- AST 模式序正确(ast dump: name@1 def@5 methods@6)
+- pattern AST 的 parse 两侧差分一致
+- compile_pattern_constructor 的 field_get 按位索引正确
+- 运行期 pattern_adt_field_get/构造(compute_record_construct)逻辑正确
+- 非竞态(FROND_WORKERS=1 同炸);确定性(同输入同 panic)
+- 干净最小复现未成:独立 tmp_probe 的 1-7 参 ADT(含首枚举字段、双中置
+  数组、末数组、9 字段 record 元素、跨模块)全部正确
+- IR dump:panic 点恒为 local 188 的无输入 cf311(死 fallback 被调度执行),
+  fn 名每次漂移(sg 布局不稳),near 值恒 ((), false, null)
+
+**关键线索**:
+1. **绑定不使用不炸**(bind_only exit 0),**使用即炸**(methods.len())
+2. **函数体膨胀(防 inline)后 panic 消失**(populate_decl 塞死代码块)——
+   但对更深的 ast_type_decl_to_type_def 链无效(膨胀它未试)
+3. 二级(值传参后 match)与一级(populate_module 直接 match)都炸
+4. **单个字段二分:name/tps/bases/def/全弃绑都不炸,只有 methods(Md[],
+   9 字段 record 数组)炸**
+
+**下一杆位**:(a) 对 ast_type_decl_to_type_def 同样膨胀验证"逐层防
+inline"假设;(b) 引擎侧给 pattern_ctor_match/field_get 加 scrutinee 值
+溯源打印(值从哪个 field_get 流出);(c) 检查 bind_var 的 scope 在 match
+臂 + inline 重编译(compile_inline_expansion 是 AST 重编译非节点拷贝)
+组合下的 name→node 映射;(d) CF_AND_BOOL 链的 inputs[2](调度依赖)在
+分支 sg 的 pending 计数。
+
+**临时绕法**:被 inline 的函数体内避免"大 ctor(≥7 字段)+末字段 record
+数组"的模式绑定使用;或函数体膨胀阻止 inline(当前 frondc populate_decl
+带膨胀块,check 命令仍因深层链 panic——1E M1 的 sema-dump 差分被此阻塞)。

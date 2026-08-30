@@ -1,0 +1,88 @@
+// map_field_crosstalk/Main.frond — 1 号案回归锚。
+// 病灶:泛型链(pending TypeVar)上的 coalesce/字段读取/方法调用曾被
+// Path-0 自由函数回退急切绑定到首个同名自由函数(如 types.Arena.get),
+// Map 字段静默错值(get 返 null)或误推为无关类型。
+// 根修四件套:Path-0 裸变量门 + 挂起重试(求解后)+ 方法 this 参统一 +
+// Elvis pending 内型绑定。本语料覆盖完整触发形态。
+import A
+import B
+import std.collections.Map
+import std.collections.List
+
+type WEnt = WEnt(pub trait_name: str, pub type_id: i64, pub slots: Map<str, i64>, pub type_name: str)
+
+type Holder = Holder(pub field_id_map: Map<str, i64>, pub witness_entries: List<WEnt>)
+
+fun probe3(s: Holder): str {
+    var out: str = ""
+
+    // 复制循环(push 局部 List)+ coalesce 默认 —— 原触发形态
+    val wits = List.empty<WEnt>()
+    var wi: usize = 0
+    while wi < s.witness_entries.len() {
+        wits.push(s.witness_entries.get(wi) ?? WEnt("", 0, Map.empty<str, i64>(), ""))
+        wi = wi + 1
+    }
+    var i: usize = 0
+    while i < wits.len() {
+        val w = wits.get(i) ?? WEnt("", 0, Map.empty<str, i64>(), "")
+        val mk = w.slots.keys()
+        var si: usize = 0
+        var slots_str = ""
+        while si < mk.len() {
+            slots_str = slots_str + mk[si] + "=#" + ((w.slots.get(mk[si]) ?? 0) as str)
+            si = si + 1
+        }
+        out = out + "wit {w.trait_name} for {w.type_name} : {slots_str}\n"
+        i = i + 1
+    }
+
+    // field-ids 段同型模式(第二使用者)
+    val fid_keys = s.field_id_map.keys()
+    var fi: usize = 0
+    while fi < fid_keys.len() {
+        out = out + fid_keys[fi] + "=" + ((s.field_id_map.get(fid_keys[fi]) ?? 0) as str) + "\n"
+        fi = fi + 1
+    }
+    out
+}
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun main(): void {
+    val m = Map.empty<str, i64>()
+    m.set("a", 1)
+    m.set("b", 2)
+    val wits = List.empty<WEnt>()
+    wits.push(WEnt("Eq", 3, m, "Point"))
+    val fid = Map.empty<str, i64>()
+    fid.set("Point.x", 7)
+    check(probe3(Holder(fid, wits)) == "wit Eq for Point : b=#2a=#1\nPoint.x=7\n", "crosstalk chain correct")
+
+    // 微型形态:局部 List + coalesce + 字段链
+    val wits2 = List.empty<WEnt>()
+    wits2.push(WEnt("Ord", 9, m, "Spot"))
+    val w = wits2.get(0) ?? WEnt("", 0, Map.empty<str, i64>(), "")
+    check(w.trait_name == "Ord", "coalesce binds pending inner")
+    check((w.slots.get("a") ?? -1) == 1, "map field get via pending chain")
+
+    summary()
+}

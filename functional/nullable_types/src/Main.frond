@@ -11,6 +11,19 @@ fun check(cond: bool, name: str): void {
     if cond { println("  PASS: {name}") }
     else { failures = failures + 1; println("  FAIL: {name}") }
 }
+type NU = NU(name: str, age: i32?)
+
+fun nv_call(): bool {
+    fire_and_forget()
+    true
+}
+fun fire_and_forget(): void {
+    noop_throwing()
+}
+fun noop_throwing(): Throw<void, str> {
+    Ok(void)
+}
+
 fun summary(): void {
     println("")
     if failures == 0 { println("RESULT: ALL PASSED") }
@@ -123,6 +136,26 @@ fun main(): void {
     check(lit == 42, "val a: i64? = 42 direct literal annotation")
     val biglit: u64? = 18446744073709551615
     check(biglit != null, "u64? = max literal annotation")
+
+    // ── 解包泄漏守卫的正向保护(负向见 nullable_leak_*.frond)────
+    // 字段流窄化:`if u.age != null` 内 u.age 按 i32 使用(修复前窄化 fact
+    // 因 env 查不到点路径而从不建立,靠 T?→T 静默放行掩盖)。
+    val nu = NU("alice", 30)
+    if nu.age != null {
+        val inner: i32 = nu.age
+        check(inner + 1 == 31, "field flow-narrow binds i32")
+    } else {
+        check(false, "field flow-narrow (wrong branch)")
+    }
+    // match 绑定臂窄化:null 臂之后的绑定变量收窄为 inner(std Path 惯用)。
+    val ms: str? = "hello"
+    val mlen = match ms {
+        null => 0
+        s => s.len()
+    }
+    check(mlen == 5, "match binding arm narrows to inner")
+    // Throw<void, E> 尾调用进 void 函数是惯用模式(无值载荷,不算泄漏)。
+    check(nv_call(), "Throw<void,_> tail into void fn stays legal")
 
     summary()
 }

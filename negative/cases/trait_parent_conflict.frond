@@ -1,0 +1,6 @@
+// trait 继承冲突:两父同名默认,子 trait 未重声明 —— 声明点拒绝。
+// EXPECT: inherits conflicting defaults
+trait A2 { fun m(): str { "A" } }
+trait B2 { fun m(): str { "B" } }
+trait C2(A2, B2) { }
+fun main(): void { println("x") }

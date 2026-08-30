@@ -78,16 +78,16 @@ fun main(): void {
     check(Hash.mix_i64(-1) == Hash.mix_i64(-1), "mix deterministic")
 
     // ── 与 collections 的联动(同一方案)───────────────────
-    val m = HashMap.new()
+    val m = HashMap.empty()
     m.set("fnv", 1)
     m.set("fmix", 2)
     check(m.get("fnv") == 1 && m.get("fmix") == 2, "HashMap over Hash.key")
     // 端到端:哈希契约违反会让 set(-0.0) 后 get(0.0) miss
-    val fz = HashMap.new()
+    val fz = HashMap.empty()
     fz.set(-0.0, "neg")
     check(fz.has(0.0) && fz.has(-0.0), "HashMap: set(-0.0), has(±0.0)")
     check(fz.get(0.0) == "neg", "HashMap: set(-0.0), get(0.0)")
-    val im = IntMap.new()
+    val im = IntMap.empty()
     im.set(-1, 10)
     im.set(-2, 20)
     check(im.get(-1) == 10 && im.get(-2) == 20, "IntMap over Hash.mix_i64")

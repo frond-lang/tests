@@ -1,0 +1,7 @@
+// A qualified type path whose module qualifier names nothing must fail
+// loudly at the annotation site (not silently become an Adt placeholder).
+// EXPECT: unknown type 'Bogus.Point': no module of that name is imported or loaded
+fun main(): void {
+    var p: Bogus.Point = 1
+    println(p)
+}

@@ -1,0 +1,22 @@
+// 复合键探针(原 Frond/frondc/probe/recordkey,2026-08-27 迁入套件):
+// record 作 Map 键完全可用 —— sema 移植的 (句柄, 名字) 类复合键有现成退路。
+
+import std.collections.Map
+
+type Pk = Pk(a: i64, b: i64)
+
+pub fun probe(): str {
+    val m = Map.empty()
+    m.set(Pk(1, 2), 100)
+    m.set(Pk(3, 4), 200)
+    val found = match m.get(Pk(1, 2)) {
+        null => -1
+        v => v
+    }
+    val missing = match m.get(Pk(9, 9)) {
+        null => true
+        _ => false
+    }
+    val ok = found == 100 && missing && m.len() as i64 == 2
+    "probe recordkey: {if ok { "PASS" } else { "FAIL" }} get=100 len=2"
+}

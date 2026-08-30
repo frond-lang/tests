@@ -1,0 +1,8 @@
+// missing — 1C 差分夹具:import 不存在的模块 → not_found 错误路径。
+// (仅供 diff_load.sh;不进功能套件 — 它必须编译失败。)
+
+import DoesNotExist
+
+fun main(): void {
+    println("unreachable")
+}

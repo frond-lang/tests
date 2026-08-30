@@ -1,0 +1,181 @@
+// net_basic — std.net 首个功能套件(此前全库零使用,死基建点亮):
+//   Addr 构造/访问往返、Dns 解析、TCP 回环(bind→connect→accept,握手在
+//   内核 backlog 完成,单线程无死锁)、read_until 跨界扫描、UDP 自收发、
+//   负向路径、close 幂等。
+import std.net.Addr
+import std.net.TcpStream
+import std.net.TcpListener
+import std.net.Dns
+import std.net.UdpSocket
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun addr_cases(): void {
+    val lo = Addr.v4_loopback()
+    check(lo.v4_octet(0) == 127 && lo.v4_octet(3) == 1, "v4 octets round-trip")
+    check(lo.v4_is_loopback(), "v4 loopback predicate")
+    val a = Addr.v4_from_octets(192, 168, 1, 77)
+    check(a.v4_bits() == 0xC0A8014Du32, "v4 bits big-endian layout")
+    check(a.v4_octet(2) == 1, "v4 octet index")
+
+    val v6 = Addr.v6_from_segments(0x2001u16, 0xDB8u16, 0, 0, 0, 0, 0, 1u16)
+    check(v6.v6_segment(0) == 0x2001u16 && v6.v6_segment(7) == 1u16, "v6 segments round-trip")
+    check(Addr.v6_loopback().v6_is_loopback(), "v6 loopback predicate")
+
+    val sa = Addr.socket_from(Addr.ip_from_v4(lo), 8080u16)
+    check(sa.socket_port() == 8080u16, "socket port stored")
+    match sa.socket_ip() {
+        V4(v) => check(v.v4_octet(0) == 127, "socket ip v4 arm"),
+        V6(_) => check(false, "socket ip should be v4"),
+    }
+    val ip = Addr.ip_from_v4(lo)
+    check(ip.ip_is_v4() && !ip.ip_is_v6(), "IpAddr v4 predicates")
+}
+
+fun dns_cases(): void {
+    match Dns.resolve("localhost").await() {
+        Ok(ips) => check(ips.len() > 0, "resolve(localhost) non-empty ({ips.len()} addrs)"),
+        Error(e) => check(false, "resolve localhost ({e.message})"),
+    }
+    match Dns.resolve("127.0.0.1").await() {
+        Ok(ips) => check(ips.len() == 1, "resolve(literal) single addr"),
+        Error(e) => check(false, "resolve literal ({e.message})"),
+    }
+}
+
+fun tcp_loopback(): Throw<void, IOError> {
+    val lo = Addr.socket_from(Addr.ip_from_v4(Addr.v4_loopback()), 47613u16)
+    // bind → connect(内核 backlog 完成握手)→ accept(立即返回,无死锁)
+    val listener = match TcpListener.bind(lo, true).await() {
+        Ok(l) => l,
+        Error(e) => {
+            check(false, "tcp bind ({e.message})")
+            return
+        },
+    }
+    check(true, "tcp bind on 127.0.0.1:47613")
+
+    val client = match TcpStream.connect(lo, 3000000000).await() {
+        Ok(c) => c,
+        Error(e) => {
+            check(false, "tcp connect ({e.message})")
+            return
+        },
+    }
+    check(true, "tcp connect (handshake via backlog)")
+
+    val accepted = match listener.accept().await() {
+        Ok(r) => r,
+        Error(e) => {
+            check(false, "tcp accept ({e.message})")
+            return
+        },
+    }
+    val server = TcpStream.from_accept_fd(accepted.stream_fd, accepted.peer_addr)
+    check(true, "tcp accept returns fd (no deadlock)")
+
+    // echo:ping → pong
+    val ping: u8[] = "ping\n".bytes()
+    client.write_all(ping, ping.len()).await()?
+    match server.read_until('\n' as u8).await() {
+        Ok(line) => check(line.len() == 5 && line[0] == 'p' as u8, "server read_until got ping"),
+        Error(e) => check(false, "server read_until ({e.message})"),
+    }
+    val pong: u8[] = "pong\n".bytes()
+    server.write_all(pong, pong.len()).await()?
+    match client.read_until('\n' as u8).await() {
+        Ok(line) => check(line.len() == 5 && line[0] == 'p' as u8, "client read_until got pong"),
+        Error(e) => check(false, "client read_until ({e.message})"),
+    }
+
+    // read_until 扫描跨界:一次发 "abc\ndef",先读出行,再关写端触发 EOF 尾巴
+    val two: u8[] = "abc\ndef".bytes()
+    server.write_all(two, two.len()).await()?
+    match client.read_until('\n' as u8).await() {
+        Ok(l1) => check(l1.len() == 4 && l1[3] == '\n' as u8, "read_until line1 = abc\\n"),
+        Error(e) => check(false, "read_until line1 ({e.message})"),
+    }
+    server.close().await()?
+    match client.read_until('\n' as u8).await() {
+        Ok(l2) => check(l2.len() == 3 && l2[0] == 'd' as u8, "read_until line2 = def (EOF tail from buffer)"),
+        Error(e) => check(false, "read_until line2 ({e.message})"),
+    }
+
+    // close 幂等
+    client.close().await()?
+    client.close().await()?
+    check(true, "stream close idempotent")
+    server.close().await()?
+    listener.close().await()?
+    listener.close().await()?
+    check(true, "listener close idempotent")
+}
+
+fun tcp_refused(): void {
+    // 127.0.0.1:1 几乎必然无监听 → connect 应温和 Err
+    val dead = Addr.socket_from(Addr.ip_from_v4(Addr.v4_loopback()), 1u16)
+    match TcpStream.connect(dead, 2000000000).await() {
+        Ok(_) => check(false, "connect to dead port should fail"),
+        Error(_) => check(true, "connect refused yields Err"),
+    }
+}
+
+fun udp_loopback(): Throw<void, IOError> {
+    val sa = Addr.socket_from(Addr.ip_from_v4(Addr.v4_loopback()), 47614u16)
+    val sock = match UdpSocket.bind(sa, true).await() {
+        Ok(s) => s,
+        Error(e) => {
+            check(false, "udp bind ({e.message})")
+            return
+        },
+    }
+    check(true, "udp bind on 127.0.0.1:47614")
+    val msg: u8[] = "udp-echo".bytes()
+    match sock.send_to(sa, msg).await() {
+        Ok(n) => check(n == msg.len(), "udp send_to self"),
+        Error(e) => check(false, "udp send_to ({e.message})"),
+    }
+    match sock.recv_from(64).await() {
+        Ok(r) => check(r.data.len() == msg.len() && r.data[0] == 'u' as u8, "udp recv_from round-trip"),
+        Error(e) => check(false, "udp recv_from ({e.message})"),
+    }
+    sock.close().await()?
+    check(true, "udp close")
+}
+
+fun main(): void {
+    println("--- addr ---")
+    addr_cases()
+    println("--- dns ---")
+    dns_cases()
+    println("--- tcp ---")
+    match tcp_loopback() {
+        Ok(_) => {}
+        Error(e) => check(false, "tcp loopback ({e.message})"),
+    }
+    tcp_refused()
+    println("--- udp ---")
+    match udp_loopback() {
+        Ok(_) => {}
+        Error(e) => check(false, "udp loopback ({e.message})"),
+    }
+    summary()
+}

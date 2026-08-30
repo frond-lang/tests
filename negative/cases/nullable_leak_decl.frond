@@ -1,0 +1,6 @@
+// EXPECT: cannot bind a nullable value
+fun main(): void {
+    val x: i32? = null
+    val a: i32 = x
+    println("{a}")
+}

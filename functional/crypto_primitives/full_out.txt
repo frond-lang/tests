@@ -1,0 +1,19 @@
+--- secure randomness ---
+  PASS: secure_bytes(0) empty
+  PASS: secure_bytes lengths
+  PASS: secure_bytes not all-zero
+  PASS: two secure samples differ
+--- sha256 ---
+  PASS: sha256(abc) FIPS vector
+  PASS: sha256(empty) FIPS vector
+  PASS: sha256(448-bit msg) FIPS vector
+  PASS: million-'a' constructed
+  PASS: sha256(million a) FIPS long vector
+--- sha512/384 ---
+  PASS: sha512(abc) FIPS vector
+  PASS: sha512(empty) FIPS vector
+  PASS: sha384(abc) FIPS vector
+  PASS: sha384(empty) FIPS vector
+  PASS: sha512(million a) FIPS long vector
+  PASS: sha384(million a) FIPS long vector
+--- x25519 ---

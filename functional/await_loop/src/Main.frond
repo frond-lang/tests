@@ -1,0 +1,33 @@
+// Multi 模式 async + 循环 await 回归锚（2026-08-23 六根因全修后 0/250+0/100+0/50 零挂）：
+// 2000 次迭代循环里创建并 await 互相引用的 record。历史挂死根因全家谱——
+// ① if-let scrutinee 临时 frames guard 活过整个块 + parking_lot 不可重入 → 同线程自死锁；
+// ② completions"先查后插"会合竞态（与 pending_events 同定律：先插入后排空）；
+// ③ on_event_arrived 先取帧后应用：非等待帧被瞬移出 map 再无推送回插（搁浅）
+//    + 与缓存体重启动臂的 remove 窗口互撞产生重复体；
+// ④ pending_events 单槽 HashMap：两条藏单互相覆盖，幸存者是陈旧者时真事件蒸发
+//    （join entry 又因"移除 waiter 数"误当送达数而被删）；
+// ⑤ 排空臂先消费 stash 再取回帧，取回落空时藏单未回填即销毁；
+// ⑥ 兜底：静止清扫（末位活跃 worker 入睡前重推搁浅 Ready 帧 + 带藏单的
+//    Suspended 帧）——任何未知的丢失唤醒在 10ms 级自愈。
+type Node = Node(next: Node?)
+
+async fun make_cycle(): Node {
+    val x = Node(null)
+    val y = Node(x)
+    x.next = y
+    y
+}
+
+async fun run_n(n: i32): void {
+    var i = 0
+    while i < n {
+        val r = make_cycle().await()
+        val _ = r.next
+        i = i + 1
+    }
+}
+
+fun main(): void {
+    run_n(2000).await()
+    println("RESULT: ALL PASSED")
+}

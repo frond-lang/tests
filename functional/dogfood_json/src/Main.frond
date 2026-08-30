@@ -324,7 +324,7 @@ type DParser = DParser(data: u8[], pos: usize) {
 }
 
 // ── 便捷访问器（对解析结果做结构化断言用）──
-fun j_get(obj: J, key: str): J? {
+fun j_get(obj: J?, key: str): J? {
     match obj {
         DObj(entries) => {
             var i: usize = 0
@@ -340,19 +340,19 @@ fun j_get(obj: J, key: str): J? {
     }
 }
 
-fun j_str(v: J): str? {
+fun j_str(v: J?): str? {
     match v {
         DStr(s) => s
         _ => null
     }
 }
-fun j_num(v: J): f64? {
+fun j_num(v: J?): f64? {
     match v {
         DNum(n) => n
         _ => null
     }
 }
-fun j_arr(v: J): J[]? {
+fun j_arr(v: J?): J[]? {
     match v {
         DArr(a) => a
         _ => null

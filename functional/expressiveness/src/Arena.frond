@@ -1,0 +1,59 @@
+// Arena 探针 — frondc AST 的目标形态:节点数组 + i64 索引互指。
+//
+// Rust 前端是 AstArena + ExprId(u32) 的 DOD 风格,Frond 侧照搬同构:
+// List<Nd> 当节点池,字段存 i64 索引(-1 表空),不用递归 Box。
+// 验证:20 万节点的构建 + 全量遍历求和,数值正确 + 耗时可接受。
+
+import std.collections.List
+import std.time.Instant
+
+type Nd = Nd(tag: i64, lhs: i64, rhs: i64)
+
+fun build(n: i64): List<Nd> {
+    val nodes = List.empty()
+    var i: i64 = 0
+    while i < n {
+        nodes.push(Nd(i % 7, (i * 3) % n, (i + 11) % n))
+        i = i + 1
+    }
+    nodes
+}
+
+// 沿索引遍历整池:每跳一步就把该节点的 tag 计入,走满 count 步。
+// (索引全在界内,直接裸索引,不经过 nullable 的 get。)
+fun traverse(arr: Nd[], hops: i64): i64 {
+    var sum: i64 = 0
+    var cur: i64 = 0
+    var h: i64 = 0
+    while h < hops {
+        val nd = arr[cur]
+        sum = sum + nd.tag
+        cur = nd.lhs % (arr.len() as i64)
+        h = h + 1
+    }
+    sum
+}
+
+pub fun probe(): str {
+    val t0 = Instant.now()
+    val nodes = build(200000)
+    val t1 = Instant.now()
+    val arr = nodes.as_array()
+    val sum = traverse(arr, 200000)
+    val t2 = Instant.now()
+
+    // 期望值:镜像同一跳跃逻辑独立重放(验证读回一致,不是数学恒等)。
+    var expect: i64 = 0
+    var cur: i64 = 0
+    var h: i64 = 0
+    while h < 200000 {
+        val nd = arr[cur]
+        expect = expect + nd.tag
+        cur = nd.lhs % (arr.len() as i64)
+        h = h + 1
+    }
+    val build_ms = t1.duration_since(t0).as_millis()
+    val walk_ms = t2.duration_since(t1).as_millis()
+    val ok = sum == expect
+    "probe arena: {if ok { "PASS" } else { "FAIL" }} nodes=200000 build_ms={build_ms} walk_ms={walk_ms}"
+}

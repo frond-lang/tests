@@ -1,0 +1,9 @@
+// EXPECT: return type mismatch: body evaluates to a nullable value
+fun leak(): i32 {
+    val x: i32? = 42
+    x
+}
+
+fun main(): void {
+    println("{leak()}")
+}

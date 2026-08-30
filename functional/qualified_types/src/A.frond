@@ -1,0 +1,22 @@
+// qualified_types/A.frond — 被依赖模块:限定路径素材。
+// 注解位/trait 名位/模式位限定路径(2026-08-28 落地)的验收语料。
+
+pub type Point = Point(pub x: i64, pub y: i64)
+
+pub type TK = | TEf | TId
+
+pub type Box<T> = Box(pub v: T)
+
+pub trait Speaker { fun speak(): i64 }
+
+pub type Rec: Speaker = Rec(pub n: i64) {
+    pub fun speak(): i64 { n * 10 }
+}
+
+pub fun origin(): Point { Point(0, 0) }
+
+// 自模块限定注解:A 内写 A.Point
+pub fun self_qualified(): Point {
+    var p: A.Point = Point(7, 8)
+    p
+}

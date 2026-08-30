@@ -1,0 +1,27 @@
+// name_resolution/A.frond — 被依赖模块:跨模块名称解析的底层素材。
+// 对应 2026-08-27/28 自举逼出的引擎 bug 家族(NAME_RESOLUTION_PLAN.md)。
+
+import std.collections.List
+
+pub type TK = | TEf | TId
+
+pub type Holder = Holder(pub k: TK, pub n: i64)
+
+pub fun make(n: i64): Holder {
+    Holder(TEf, n)
+}
+
+pub fun of(k: TK): i64 {
+    match k {
+        TEf => 1
+        TId => 2
+    }
+}
+
+// 跨模块全局 val 数组(管线重排修复的形态:dep 模块初始化器在
+// 完整类型表下解析字段类型)。
+pub val BATCH: Holder[] = [Holder(TEf, 40), Holder(TId, 41)]
+
+pub fun batch_total(): i64 {
+    BATCH[0].n + BATCH[1].n
+}

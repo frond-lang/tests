@@ -1,0 +1,47 @@
+// name_resolution/B.frond — 中间依赖模块:承载各类撞名/跨模块形态。
+// 见 Frond/core/NAME_RESOLUTION_PLAN.md 病灶清单。
+
+import std.collections.List
+
+import A
+
+// 案 4 形态:用户类型与 std 类型撞名(std.json 有裸名 Parser)。
+// 方法分派按 type_id,不得被 std 裸名劫持。
+pub type Parser = Parser(pub n: i64) {
+    fun base(): i64 { n }
+    pub fun parse(): i64 { base() * 2 }
+}
+
+// 案 6 形态:类型名与另一类型的变体名撞名(无字段变体 vs 四字段 ctor)。
+// 构造按元数消歧:ModLike(1,2,3,4) 必须落到四字段构造器。
+pub type Ops = | ModLike | AddLike
+
+pub type ModLike = ModLike(pub a: i64, pub b: i64, pub c: i64, pub d: i64)
+
+pub fun sum4(m: ModLike): i64 {
+    m.a + m.b + m.c + m.d
+}
+
+// 案 1/2/5 形态:dep 模块内构造其他用户模块的记录 + 字段读 +
+// 兄弟方法调用 + & 方法 + Throw 返回 + 自身字段进返回值。
+pub type Counter = Counter(pub n: i64, pub hits: List<i64>) {
+    fun base(): i64 { n }
+    fun &bump(): void {
+        n = n + 1
+        hits.push(n)
+    }
+    pub fun snapshot(): Throw<Holder, TK> {
+        bump()
+        if n < 0 {
+            throw TId
+        }
+        Ok(Holder(TEf, base()))
+    }
+}
+
+// dep 模块全局 val 数组(字段类型来自导入模块的 ADT)。
+pub val TABLE: Parser[] = [Parser(7), Parser(8)]
+
+pub fun table_total(): i64 {
+    TABLE[0].parse() + TABLE[1].base()
+}

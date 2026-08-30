@@ -1,0 +1,34 @@
+// Mutate 探针 — solver 式原地变更:var 记录字段写穿 + 数组元素写 + 别名浅共享。
+//
+// InferContext 移植的核心形态:一个大的可变上下文记录,循环里高频改字段、
+// 改数组槽,并验证别名看到的是同一份(place 模型,浅共享)。
+
+import std.time.Instant
+
+type Ctx = Ctx(steps: i64, acc: i64, items: i64[])
+
+pub fun probe(): str {
+    val ctx = Ctx(0, 0, [0i64, ..64])
+    var i: i64 = 0
+    val t0 = Instant.now()
+    while i < 1000000 {
+        ctx.acc = ctx.acc + i
+        ctx.items[i % 64] = i
+        ctx.steps = ctx.steps + 1
+        i = i + 1
+    }
+    val t1 = Instant.now()
+
+    // 别名浅共享:通过 view 改,ctx 必须同步可见。
+    val view = ctx
+    view.acc = view.acc + 100
+
+    // 期望值:等差数列和 + 100;steps = 1000000;items 最后一轮写过的槽。
+    val n: i64 = 1000000
+    val expect_acc = (n - 1) * n / 2 + 100
+    val last_slot = ctx.items[(n - 1) % 64]
+    val ok = ctx.acc == expect_acc && ctx.steps == n &&
+        view.acc == ctx.acc && last_slot == n - 1
+    val ms = t1.duration_since(t0).as_millis()
+    "probe mutate: {if ok { "PASS" } else { "FAIL" }} iters=1000000 ms={ms} acc={ctx.acc}"
+}

@@ -1,0 +1,47 @@
+// 功能验证：泛型类型别名（CmpFn<T> 经任何应用点展开为真实函数类型）
+type CmpFn<T> = (T, T) -> i32
+type ElemArr<E> = E[]
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun try_alias<T>(a: T[], cmp: CmpFn<T>): void {
+    if a.len() >= 2 {
+        val r = cmp(a[0], a[1])
+        check(r == 5, "generic alias param (CmpFn<T> in generic fn)")
+    }
+}
+
+fun take_i32(c: CmpFn<i32>): i32 { c(1, 2) }
+
+fun main(): void {
+    println("=== generic type alias ===")
+    val xs: i32[] = [3, 1]
+    try_alias(xs, fun(a: i32, b: i32): i32 { 5 })
+
+    val direct = take_i32(fun(a: i32, b: i32): i32 { a * 10 + b })
+    check(direct == 12, "concrete alias application (CmpFn<i32>)")
+
+    val arr: ElemArr<i64> = [1, 2, 3]
+    check(arr.len() == 3 && arr[2] == 3, "array alias (ElemArr<i64>)")
+
+    // 非泛型别名不受影响
+    type IntFn = () -> i32
+    val f: IntFn = fun(): i32 { 42 }
+    check(f() == 42, "non-generic alias unchanged")
+
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

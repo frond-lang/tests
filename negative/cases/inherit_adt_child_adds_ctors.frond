@@ -1,0 +1,11 @@
+// 多构造器 ADT 子类必须用零字段形式 '= Child()':构造器集原样继承,
+// 不得新增构造器或自有字段(开放求和会击穿父类型 match 穷尽性)。
+// EXPECT: requires the zero-field child form
+type Lst = | NilX | ConsX(i32, Lst)
+type Bad(Lst) = Bad(extra: i32) {
+    fun z(): i32 { 0 }
+}
+fun main(): void {
+    val v = Bad(1)
+    println("{v.z()}")
+}

@@ -1,0 +1,70 @@
+// DeepMatch 探针 — 递归 ADT + 嵌套 ctor 模式 + 热循环。
+//
+// 验证三件事:直接递归类型(Tree 引用 Tree)可用;嵌套构造器模式
+// (Node(Leaf(a), v, Node(...)))可用;模式分派在 20 万次热循环下
+// 耗时可接受(这是 sema 移植里 match 推理热路径的代理测量)。
+
+import std.time.Instant
+
+type Tree = | Leaf(i64) | Node(Tree, i64, Tree)
+
+// 深度优先右链:build(d) = Node(build(d-1), d, Leaf(d)) — 递归构造 + 递归消费。
+fun build(depth: i64): Tree {
+    if depth <= 0 {
+        Leaf(depth)
+    } else {
+        Node(build(depth - 1), depth, Leaf(depth * 2))
+    }
+}
+
+fun total(t: Tree): i64 {
+    match t {
+        Leaf(v) => v
+        Node(l, v, r) => total(l) + v + total(r)
+    }
+}
+
+// 嵌套 ctor 模式:三层深度的结构识别。
+fun classify(t: Tree): i64 {
+    match t {
+        Leaf(v) => v
+        Node(Leaf(a), v, Leaf(b)) => a + v + b
+        Node(Leaf(a), v, Node(_, w, _)) => a + v + w
+        Node(Node(_, w, _), v, Leaf(b)) => w + v + b
+        Node(_, v, _) => v
+    }
+}
+
+pub fun probe(): str {
+    val t0 = Instant.now()
+    val tree = build(1500)
+    val t1 = Instant.now()
+    val sum = total(tree)
+    val t2 = Instant.now()
+
+    // classify 热循环:小树上 20 万次分派。
+    // small 的右子是 Node → 落第 5 臂(catch-all)值 4;
+    // small2 的形态 Node(Node,_,Leaf) → 落第 4 臂 = 2+4+9 = 15。
+    val small = Node(Node(Leaf(1), 2, Leaf(3)), 4, Node(Leaf(5), 6, Leaf(7)))
+    val small2 = Node(Node(Leaf(1), 2, Leaf(3)), 4, Leaf(9))
+    var acc: i64 = 0
+    var i: i64 = 0
+    while i < 200000 {
+        acc = acc + classify(small)
+        i = i + 1
+    }
+    val t3 = Instant.now()
+
+    // build(1500) 的 total:左链每层贡献 depth + 右叶 2*depth。
+    var expect: i64 = 0
+    var d: i64 = 0
+    while d <= 1500 {
+        expect = expect + d + d * 2
+        d = d + 1
+    }
+    val ok = sum == expect && acc == 4 * 200000 && classify(small2) == 15
+    val build_ms = t1.duration_since(t0).as_millis()
+    val sum_ms = t2.duration_since(t1).as_millis()
+    val match_ms = t3.duration_since(t2).as_millis()
+    "probe deepmatch: {if ok { "PASS" } else { "FAIL" }} depth=1500 build_ms={build_ms} sum_ms={sum_ms} match200k_ms={match_ms}"
+}

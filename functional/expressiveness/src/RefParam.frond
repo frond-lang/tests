@@ -1,0 +1,20 @@
+// 引用写穿探针(原 Frond/frondc/probe/refparam,2026-08-27 迁入套件)。
+//
+// 结论:plain fun 的 &T 参数声明可解析但无调用形态(touch(&ctx)/裸传
+// 都被拒);工作形态 = 类型方法 pub fun &m()(&self,字段裸写)。
+
+type RefCtx = RefCtx(n: i64, acc: i64) {
+    pub fun &touch(): void {
+        n = n + 1
+        acc = acc + 10
+    }
+}
+
+pub fun probe(): str {
+    val ctx = RefCtx(5, 0)
+    ctx.touch()
+    ctx.touch()
+    // 期望(引用写穿成立):n=7 acc=20。
+    val ok = ctx.n == 7 && ctx.acc == 20
+    "probe refparam: {if ok { "PASS" } else { "FAIL" }} &self write-through n={ctx.n} acc={ctx.acc}"
+}

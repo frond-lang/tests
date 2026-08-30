@@ -1,0 +1,65 @@
+// name_resolution — 跨模块名称解析回归套件(自举 Stage 1 逼出的引擎
+// bug 家族的永久形态固化)。验收:RESULT: ALL PASSED。
+
+import std.collections.List
+import std.json
+
+import A
+import B
+import Parse
+
+var failures: i64 = 0
+
+fun check(ok: bool, name: str): void {
+    if ok {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun main(): void {
+    // 案 2:跨模块工厂构造 + 字段读。
+    check(A.make(7).n == 7, "cross-module factory field read")
+
+    // 案 2:dep 模块内构造导入模块的记录(方法体内)+ Throw 返回 + 字段读。
+    val c = B.Counter(1, List.empty())
+    match c.snapshot() {
+        Ok(h) => check(h.n == 2 && c.n == 2, "dep-module construct + Throw return + field read")
+        Error(_) => check(false, "dep-module construct + Throw return + field read")
+    }
+
+    // 案 3:限定零参构造器值(Module.Ctor)进 match 与函数。
+    check(A.of(A.TEf) == 1 && A.of(A.TId) == 2, "qualified nullary ctor value dispatches")
+
+    // 案 4:用户 Parser(与 std.json 裸名撞名)的方法分派。
+    check(Parser(21).parse() == 42, "user type named like std type dispatches own methods")
+
+    // 案 1:dep 模块全局 val 数组(导入 ADT 字段类型)+ 跨模块读。
+    check(A.batch_total() == 81, "dep-module global array with imported field types")
+    check(B.table_total() == 22, "dep-module global array + sibling method calls")
+
+    // 案 6:类型名与变体名撞名,构造按元数消歧到四字段 ctor。
+    check(B.sum4(ModLike(1, 2, 3, 4)) == 10, "type/variant name collision: arity-exact construct")
+
+    // 案 8:用户模块与 std 模块同短名(Parse vs std.json.Parse)。短键
+    // "Parse.parse" 双注册。根修后:**导入即真理** — 二段短名按 import
+    // 所指绑定(用户赢,声明序无关),std 孪生经三段全路径仍可达。
+    check(Parse.parse("aaba") == 4, "user module short-name wins over std twin (import-resolved)")
+    match std.json.Parse.parse("[1, 2]") {
+        Ok(_) => check(true, "std twin reachable via full path under name clash")
+        Error(_) => check(false, "std twin reachable via full path under name clash"),
+    }
+
+    // 案 8b:「模块.枚举变体」值访问(Eof)正确构造,哨兵循环守卫有效
+    // (限定/裸导入两形态的 Module.Ctor 尾段匹配)。
+    val toks = Parse.tokenize("ab")
+    check(toks[2].kind == Eof, "module.enum-variant value access")
+
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

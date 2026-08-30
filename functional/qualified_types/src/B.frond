@@ -1,0 +1,3 @@
+// qualified_types/B.frond — 与 A 同名裸类型的撞名模块。
+
+pub type Point = Point(pub x: i64, pub y: i64, pub z: i64)

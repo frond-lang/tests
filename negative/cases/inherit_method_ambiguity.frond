@@ -1,0 +1,14 @@
+// 两基同名方法未覆写:调用点歧义,必须覆写消歧。
+// EXPECT: ambiguous inherited method 'm'
+type M1 = M1(a: i32) {
+    fun m(): i32 { 1 }
+}
+type M2 = M2(b: i32) {
+    fun m(): i32 { 2 }
+}
+type M3(M1, M2) = M3(c: i32) {
+}
+fun main(): void {
+    val v = M3(1, 2, 3)
+    println("{v.m()}")
+}

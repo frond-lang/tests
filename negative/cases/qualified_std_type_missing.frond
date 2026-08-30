@@ -1,0 +1,7 @@
+// A std-qualified path to a type std does not define: the qualifier maps
+// to the std bare-key tree, the tail misses — must be a hard error.
+// EXPECT: unknown type 'std.bogus.Thing'
+fun main(): void {
+    var x: std.bogus.Thing = 1
+    println(x)
+}

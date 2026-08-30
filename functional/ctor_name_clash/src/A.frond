@@ -1,0 +1,4 @@
+// ctor_name_clash/A.frond — 零参变体家族(与 B 的同名一元变体撞名)。
+// 回归锚(0 号案 2026-08-28):撞名裸名零参变体作构造实参曾静默编译为 void。
+
+pub type TDK = | TAdt | TRecord | TAlias | TNewtype

@@ -1,0 +1,234 @@
+// 功能验证：builtin/sort — 数组排序与有序数组二分
+// 公开形态=方法糖：arr.sort() / arr.sort_by(cmp) / arr.is_sorted() /
+// arr.lower_bound(v) / arr.upper_bound(v)（与 arr.iter() 同款机制）。
+// 标量元素数组走 C 堆排序快路；str[] 与自定义比较器走纯 Frond 堆排序。
+// 排序为原地、不稳定、升序。
+import std.core.mem
+import std.math
+import std.time.Instant
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+type Pair = Pair(k: i32, v: str)
+
+fun main(): void {
+    println("=== builtin/sort ===")
+
+    // ── sort：标量 C 快路 ────────────────────────────────
+    val a: i32[] = [5, 3, 9, 1, 7, 3, 8, 2, 6, 4]
+    a.sort()
+    check(a.is_sorted(), "sort i32 (C) + is_sorted")
+    check(a[0] == 1 && a[9] == 9, "sort i32 endpoints")
+
+    val neg: i32[] = [-5, 3, -9, 0, 2147483647, -2147483648, 3]
+    neg.sort()
+    check(neg.is_sorted() && neg[0] == -2147483648 && neg[6] == 2147483647,
+          "sort i32 negatives + extremes")
+
+    val b: i64[] = [5000000000, -5000000000, 0]
+    b.sort()
+    check(b[0] == -5000000000 && b[2] == 5000000000, "sort i64 wide values")
+
+    val c: u16[] = [65535, 0, 300]
+    c.sort()
+    check(c[0] == 0 && c[2] == 65535, "sort u16 width boundary")
+
+    val d: f64[] = [2.5, -1.5, 0.0, -0.0, 3.5]
+    d.sort()
+    check(d.is_sorted(), "sort f64 incl -0.0/0.0")
+
+    val e: usize[] = [9, 1, 5]
+    e.sort()
+    check(e[0] == 1 && e[2] == 9, "sort usize")
+
+    val f: i8[] = [-128, 127, 0]
+    f.sort()
+    check(f[0] == -128 && f[2] == 127, "sort i8 boundaries")
+
+    // bool/char（全宽补齐批）
+    val sb: bool[] = [true, false, true, false]
+    sb.sort()
+    check(!sb[0] && !sb[1] && sb[2] && sb[3], "sort bool (C)")
+
+    val sc: char[] = ['中', 'a', 'B', '7']
+    sc.sort()
+    check(sc[0] == '7' && sc[1] == 'B' && sc[2] == 'a' && sc[3] == '中', "sort char code points (C)")
+
+    // i128/u128/f16/f128（全宽补齐第二批：C 路四类型）
+    // 注意：数组字面量里裸整型字面量是 i32 标签（存量推断缺口——元素不随
+    // 注解强制转换），会混装成 "array" 走泛型路；这里全用类型化值构造
+    // 同质数组，确保真正命中 C 路。
+    val i128_one: i128 = 1
+    val i128_min = -(i128_one << 127)
+    val i128_max = (i128_one << 127) - i128_one
+    val si128: i128[] = [i128_one - i128_one, i128_max, -i128_one, i128_min, i128_one + 4]
+    si128.sort()
+    check(si128[0] == i128_min && si128[4] == i128_max && si128.is_sorted(), "sort i128 extremes (C)")
+    check(si128[1] == -i128_one && si128[2] == 0 && si128[3] == 5, "sort i128 full order")
+
+    val u128_zero: u128 = 0
+    val u128_one: u128 = 1
+    val u128_max = ~u128_zero
+    val su128: u128[] = [u128_max, u128_one, u128_zero, u128_max - u128_one]
+    su128.sort()
+    check(su128[0] == u128_zero && su128[1] == u128_one && su128[2] == u128_max - u128_one && su128[3] == u128_max, "sort u128 top range (C)")
+
+    val sf16: f16[] = [3.5f16, -1.5f16, 0.0f16, -0.0f16, 2.5f16]
+    sf16.sort()
+    check(sf16[0] == -1.5f16 && sf16[4] == 3.5f16, "sort f16 numeric (C)")
+    check(sf16[1] == 0.0f16 && sf16[2] == 0.0f16 && sf16[3] == 2.5f16, "sort f16 zeros collapse to middle")
+
+    val sf128: f128[] = [1.5f128, -0.0f128, 0.0f128, -2.5f128]
+    sf128.sort()
+    check(sf128[0] == -2.5f128 && sf128[3] == 1.5f128, "sort f128 totalOrder (C)")
+    // totalOrder 区分 ±0：-0.0 必须排在 +0.0 前（1/x 的符号可判别）
+    check(1.0f128 / sf128[1] < 0.0f128 && 1.0f128 / sf128[2] > 0.0f128,
+          "sort f128 -0.0 strictly before +0.0")
+
+    // f128 NaN 位一致性（软除法验证锚）：两次 nan 的 totalOrder 键相等 = 位相等
+    val nan_arr: f128[] = [Math.nan_f128()]
+    val nan_arr2: f128[] = [Math.nan_f128()]
+    check(Mem.compare(nan_arr, nan_arr2) == 0, "f128 nan_f128 bits deterministic")
+
+    // 边界：空 / 单元素 / 双元素 / 已序 / 逆序
+    val empty: i32[] = []
+    empty.sort()
+    check(empty.len() == 0, "sort empty")
+
+    val one: i32[] = [42]
+    one.sort()
+    check(one[0] == 42, "sort single")
+
+    val two: i32[] = [2, 1]
+    two.sort()
+    check(two[0] == 1 && two[1] == 2, "sort pair swap")
+
+    val sorted_in: i32[] = [1, 2, 3, 4]
+    sorted_in.sort()
+    check(sorted_in.is_sorted(), "sort already sorted")
+
+    val rev: i32[] = [4, 3, 2, 1]
+    rev.sort()
+    check(rev.is_sorted(), "sort reversed")
+
+    // 共享引用看到原地排序（写回经 Arc 身份）
+    val shared: i64[] = [3, 1, 2]
+    val alias = shared
+    shared.sort()
+    check(alias[0] == 1 && alias[2] == 3, "sort visible through shared reference")
+
+    // ── sort：str[]（纯 Frond 泛型路）─────────────────────
+    val ss: str[] = ["pear", "apple", "fig", "banana", "fig"]
+    ss.sort()
+    check(ss[0] == "apple" && ss[2] == "fig" && ss[4] == "pear", "sort str[] generic")
+
+    // ── sort_by：任意元素 + 比较器 ───────────────────────
+    val ps: Pair[] = [Pair(3, "c"), Pair(1, "a"), Pair(2, "b")]
+    ps.sort_by(fun(x: Pair, y: Pair): i32 { x.k - y.k })
+    check(ps[0].k == 1 && ps[1].k == 2 && ps[2].k == 3, "sort_by record key asc")
+
+    ps.sort_by(fun(x: Pair, y: Pair): i32 { y.k - x.k })
+    check(ps[0].k == 3 && ps[2].k == 1, "sort_by record key desc")
+
+    val words: str[] = ["ccc", "a", "bb"]
+    words.sort_by(fun(x: str, y: str): i32 { x.len() as i32 - y.len() as i32 })
+    check(words[0] == "a" && words[2] == "ccc", "sort_by str length")
+
+    // 捕获闭包作比较器（外部阈值影响排序键）
+    val threshold = 5
+    val nums: i32[] = [2, 8, 4, 9, 1]
+    nums.sort_by(fun(x: i32, y: i32): i32 {
+        val kx = if x > threshold { 1 } else { 0 }
+        val ky = if y > threshold { 1 } else { 0 }
+        kx - ky
+    })
+    check(nums[0] <= threshold && nums[3] > threshold, "sort_by capturing closure")
+
+    // ── is_sorted ────────────────────────────────────────
+    check(([1, 2, 2, 3]).is_sorted(), "is_sorted with duplicates")
+    check(!([1, 3, 2]).is_sorted(), "is_sorted detects disorder")
+    check(([] as i32[]).is_sorted(), "is_sorted empty")
+    val isf: f64[] = [-0.0, 0.0, 1.0]
+    check(isf.is_sorted(), "is_sorted -0.0 <= 0.0")
+
+    // ── lower_bound / upper_bound（要求已序）────────────
+    val s: i32[] = [1, 3, 3, 3, 5, 7]
+    check(s.lower_bound(0) == 0, "lower_bound before first")
+    check(s.lower_bound(1) == 0, "lower_bound first element")
+    check(s.lower_bound(3) == 1, "lower_bound duplicate run start")
+    check(s.lower_bound(4) == 4, "lower_bound gap")
+    check(s.lower_bound(7) == 5, "lower_bound last element")
+    check(s.lower_bound(9) == 6, "lower_bound after last")
+
+    check(s.upper_bound(0) == 0, "upper_bound before first")
+    check(s.upper_bound(3) == 4, "upper_bound duplicate run end")
+    check(s.upper_bound(7) == 6, "upper_bound last element")
+    check(s.upper_bound(9) == 6, "upper_bound after last")
+
+    val empt: i32[] = []
+    check(empt.lower_bound(5) == 0 && empt.upper_bound(5) == 0, "bounds on empty")
+
+    val sf: f64[] = [-1.5, 0.0, 2.5]
+    check(sf.lower_bound(0.0) == 1 && sf.upper_bound(0.0) == 2, "bounds f64")
+
+    // str 有序数组二分
+    val ws: str[] = ["apple", "fig", "pear"]
+    check(ws.lower_bound("fig") == 1 && ws.upper_bound("fig") == 2, "bounds str[]")
+
+    // ── C 路/泛型路一致性（随机置换两种路同结果）────────
+    val perm: i32[] = [9, 4, 7, 2, 8, 1, 6, 3, 5, 0]
+    perm.sort()
+    var all_eq = true
+    var i = 0 as usize
+    while i < perm.len() {
+        if perm[i] != i as i32 { all_eq = false }
+        i = i + 1
+    }
+    check(all_eq, "sort permutation identity (C path)")
+
+    // ── 性能锚点（防退化回纯 Frond 路）─────────────────
+    println("")
+    println("  perf anchors:")
+    val n = 1048576 as usize
+    val big: i32[] = [0, ..n]
+    // 逆序填充：n - i
+    i = 0
+    while i < n {
+        big[i] = (n - i) as i32
+        i = i + 1
+    }
+    var t0 = Instant.now()
+    big.sort()
+    var t1 = Instant.now()
+    val sort_us = t1.duration_since(t0).as_micros()
+    println("    sort 1M i32: {sort_us} us")
+    check(sort_us < 200000, "perf: sort 1M i32 < 200ms")
+    check(big.is_sorted() && big[0] == 1 && big[n - 1] == (n as i32), "perf sort correct")
+
+    t0 = Instant.now()
+    val lb = big.lower_bound(123456)
+    t1 = Instant.now()
+    val lb_us = t1.duration_since(t0).as_micros()
+    println("    lower_bound 1M: {lb_us} us")
+    check(lb == 123455 && lb_us < 10000, "perf: lower_bound 1M < 10ms")
+
+    summary()
+}

@@ -100,7 +100,60 @@ type Loud: Greeter = Loud(name: str) {
     }
 }
 
+// ── trait 继承:trait Pet(Animal) ──
+trait Animal2 {
+    fun name2(): str { "unnamed" }
+    fun speak2(): str
+}
+trait Pet2(Animal2) {
+    fun owner2(): str
+    fun intro2(): str { name2() + " (" + owner2() + ")" }
+}
+type Dog2: (Pet2) = Dog2(n: str, o: str) {
+    override fun name2(): str { n }
+    fun speak2(): str { "woof" }
+    fun owner2(): str { o }
+}
+// 父默认直接可见(实现类未提供 name2 时)
+type Stray2: (Pet2) = Stray2(o: str) {
+    fun speak2(): str { "..." }
+    fun owner2(): str { o }
+}
+// 子 trait 覆写遮蔽两父冲突
+trait PA { fun pick(): str { "PA" } }
+trait PB { fun pick(): str { "PB" } }
+trait PC(PA, PB) {
+    fun pick(): str { "PC" }
+}
+type Picker: (PC) = Picker(v: i32) { }
+// 子 trait 默认内 super → 父默认
+trait Shout(Animal2) {
+    fun shout(): str { name2() + "!!" }
+}
+type Cat2: (Shout) = Cat2(n: str) {
+    override fun name2(): str { n }
+    fun speak2(): str { "meow" }
+    fun owner2(): str { "none" }
+}
+fun via_animal(a: Animal2): str { a.speak2() }
+
+fun trait_inheritance(): void {
+    println("-- trait inheritance --")
+    val d = Dog2("rex", "ann")
+    check(d.intro2() == "rex (ann)", "parent methods visible on child impl")
+    check(d.speak2() == "woof", "parent abstract implemented")
+    val stray = Stray2("bob")
+    check(stray.name2() == "unnamed", "parent default inherited when not overridden")
+    check(stray.intro2() == "unnamed (bob)", "child default uses parent default")
+    val pk = Picker(1)
+    check(pk.pick() == "PC", "child trait declaration shadows conflicting parents")
+    val c = Cat2("tom")
+    check(c.shout() == "tom!!", "child default calls parent default")
+    check(via_animal(c) == "meow", "child-trait value flows into parent-trait param")
+}
+
 fun main(): void {
+    trait_inheritance()
     println("=== super / delegate / override ===")
 
     check(Inh.tag() == "base1", "default inherited without declaration")

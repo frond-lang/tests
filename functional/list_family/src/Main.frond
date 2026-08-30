@@ -1,0 +1,132 @@
+// list_family — List 继承家族（ArrayList / LinkedList）验收套件。
+//
+//   ArrayList<T>(List<T>)  零字段纯继承子类（数组后端，显式名）
+//   LinkedList<T>(List<T>) 头尾双链子类覆写存储方法（O(1) 两端 + push_front）
+//
+// 覆盖：家族三形态表面合同、LinkedList 链式覆盖（push/pop 顺序、
+// push_front、get/set 游走、as_array 快照、边界）、继承晚绑定
+//（子类值流入 List 形参仍分派到子类覆写）、大规模正确性、
+// Set 行追加 C 路（Mem.is_scalar_array）回归。
+
+import std.collections.List
+import std.collections.ArrayList
+import std.collections.LinkedList
+import std.collections.IntSet
+
+var failures: i32 = 0
+
+fun check(ok: bool, label: str): void {
+    if ok {
+        println("  PASS: {label}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {label}")
+    }
+}
+
+fun fill_and_drain(l: List<i64>, n: i64): bool {
+    var i: i64 = 0
+    while i < n {
+        l.push(i * 3)
+        i = i + 1
+    }
+    if l.len() != n as usize { return false }
+    var ok = true
+    var j: i64 = 0
+    while j < n {
+        if (l.get(j as usize) ?? -1) != j * 3 { ok = false }
+        j = j + 1
+    }
+    while l.len() > 0 {
+        val v = l.pop() ?? -1
+        if v != (l.len() as i64) * 3 { ok = false }
+    }
+    ok
+}
+
+// List 形参收子类值：晚绑定分派到子类覆写。
+fun probe_via_base(l: List<str>): str {
+    l.push("via-base")
+    (l.get(0) ?? "?") + ":" + (l.pop() ?? "?")
+}
+
+fun main(): void {
+    println("=== List Family ===")
+
+    // ── ArrayList：零字段纯继承，与 List 表面完全等价 ──
+    println("-- ArrayList --")
+    val al = ArrayList.empty()
+    check(al.is_empty(), "ArrayList empty")
+    check(fill_and_drain(al, 500), "ArrayList fill/walk/drain 500")
+    val al2 = ArrayList.from([10i64, 20i64, 30i64])
+    check(al2.len() == 3 && (al2.get(1) ?? -1) == 20, "ArrayList.from snapshot")
+    al2.set(0, 11)
+    check((al2.get(0) ?? -1) == 11, "ArrayList set")
+    check(al2.capacity() >= al2.len(), "ArrayList capacity >= len")
+
+    // ── LinkedList：链式覆盖 ──
+    println("-- LinkedList --")
+    val ll = LinkedList.empty()
+    check(ll.is_empty(), "LinkedList empty")
+    check(fill_and_drain(ll, 300), "LinkedList fill/walk/drain 300")
+
+    val l2 = LinkedList.from([1i64, 2i64, 3i64])
+    check(l2.len() == 3, "LinkedList.from len 3")
+    check((l2.get(0) ?? -1) == 1 && (l2.get(2) ?? -1) == 3, "LinkedList.get ends")
+    check(l2.get(5) == null, "LinkedList.get OOB null")
+    l2.set(1, 22)
+    check((l2.get(1) ?? -1) == 22, "LinkedList.set walks")
+    l2.set(9, 99)
+    check((l2.get(1) ?? -1) == 22, "LinkedList.set OOB no-op")
+    check((l2.pop() ?? -1) == 3, "LinkedList.pop removes END")
+    check((l2.pop() ?? -1) == 22, "LinkedList.pop again")
+    check(l2.len() == 1, "LinkedList len after pops")
+    check(l2.pop() != null && l2.pop() == null, "LinkedList pop to empty then null")
+
+    // push_front + push 顺序
+    val l3 = LinkedList.empty()
+    l3.push(2i64)
+    l3.push(3i64)
+    l3.push_front(1i64)
+    l3.push_front(0i64)
+    check(l3.as_array() == [0i64, 1i64, 2i64, 3i64], "LinkedList push_front ordering")
+
+    // as_array 快照独立
+    val snap = l3.as_array()
+    l3.push(4i64)
+    check(snap.len() == 4 && l3.len() == 5, "LinkedList as_array snapshot independent")
+
+    // 空链表
+    val l4 = LinkedList.empty()
+    check(l4.as_array().len() == 0, "LinkedList empty as_array")
+    check(l4.pop() == null, "LinkedList empty pop null")
+
+    // 非标量元素（str）——链节点泛型化
+    val l5 = LinkedList.from(["a", "b"])
+    l5.push("c")
+    check(l5.as_array() == ["a", "b", "c"], "LinkedList str elements")
+
+    // ── 继承晚绑定：子类值经 List 形参分派到子类覆写 ──
+    println("-- late binding --")
+    val l6 = LinkedList.empty()
+    check(probe_via_base(l6) == "via-base:via-base", "child override via base-typed param")
+    val al6 = ArrayList.empty()
+    check(probe_via_base(al6) == "via-base:via-base", "array child via base-typed param")
+
+    // ── Set 行追加 C 路回归（IntSet 的 i64 行经 fill+Mem.copy 增长）──
+    println("-- Set C-path rows --")
+    val s = IntSet.empty()
+    var i: i64 = 0
+    while i < 2000 {
+        s.add(i * 7)
+        i = i + 1
+    }
+    check(s.len() == 2000, "IntSet 2000 inserts (C-path row growth)")
+    check(s.has(6993) && !s.has(6994), "IntSet membership after growth")
+
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

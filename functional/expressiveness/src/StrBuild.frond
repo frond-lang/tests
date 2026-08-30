@@ -1,0 +1,32 @@
+// StrBuild 探针 — 字符串拼接热路径:O(n^2) 风险测量。
+//
+// 诊断消息构造、token 渲染都是"循环里往字符串尾部追加"的形态。若每次
+// + 都整串复制,万级追加就是百 MB 级 memcpy。测量追加循环 vs Str.split
+// 数组路径的耗时差,给 frondc 的报文构造选型提供数据。
+
+import std.core.types.Str
+import std.time.Instant
+
+pub fun probe(): str {
+    // ── 追加循环(风险路径)──
+    val t0 = Instant.now()
+    var s: str = ""
+    var i: i64 = 0
+    while i < 10000 {
+        s = s + "x"
+        i = i + 1
+    }
+    val t1 = Instant.now()
+    val loop_len = s.len()
+    val loop_ms = t1.duration_since(t0).as_millis()
+
+    // ── 对照路径 ── Str.repeat(C 内核,单次分配)。
+    val t2 = Instant.now()
+    val joined = Str.repeat("x", 10000)
+    val t3 = Instant.now()
+    val join_len = joined.len()
+    val join_ms = t3.duration_since(t2).as_millis()
+
+    val ok = loop_len == 10000 && join_len == 10000
+    "probe strbuild: {if ok { "PASS" } else { "FAIL" }} n=10000 loop_ms={loop_ms} join_ms={join_ms}"
+}

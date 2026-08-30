@@ -1,0 +1,41 @@
+// expressiveness — 表达力套件(自举 Stage 1 前置探针转正)。
+//
+// 每个模块一个"用 Frond 写编译器"的形态探针,报告行内嵌 PASS/FAIL 与
+// 参考耗时(耗时仅记录,不作断言 —— 数值见 Frond/frondc/README.md)。
+// 验收:RESULT: ALL PASSED。
+
+import std.core.types.Str
+
+import Arena
+import Mutate
+import DeepMatch
+import Maps
+import StrBuild
+import RefParam
+import RecordKey
+
+fun run_probe(line: str): i64 {
+    if Str.contains(line, "FAIL") {
+        println("  FAIL: {line}")
+        1
+    } else {
+        println("  PASS: {line}")
+        0
+    }
+}
+
+fun main(): void {
+    var failures: i64 = 0
+    failures = failures + run_probe(Arena.probe())
+    failures = failures + run_probe(Mutate.probe())
+    failures = failures + run_probe(DeepMatch.probe())
+    failures = failures + run_probe(Maps.probe())
+    failures = failures + run_probe(StrBuild.probe())
+    failures = failures + run_probe(RefParam.probe())
+    failures = failures + run_probe(RecordKey.probe())
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

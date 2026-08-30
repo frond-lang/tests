@@ -1,10 +1,12 @@
-// 功能验证:std.collections 四个容器(HashMap/IntMap/HashSet/IntSet)
+// 功能验证:std.collections 五个容器(List/HashMap/IntMap/HashSet/IntSet)
 // 覆盖:增删改查、更新语义、空串/Unicode/负数键、增长 rehash、
-// 删除后重插、keys/values/items 数量、clear、可空值类型、去重语义。
+// 删除后重插、keys/values/items 数量、clear、可空值类型、去重语义、
+// List 摊还增长/快照/别名语义、双容器大规模共存(循环回收回归锚)。
 import std.collections.HashMap
 import std.collections.IntMap
 import std.collections.HashSet
 import std.collections.IntSet
+import std.collections.List
 
 var failures: i32 = 0
 
@@ -26,7 +28,7 @@ fun key_of(i: i64): str {
 
 fun str_map_basic(): void {
     println("-- HashMap basic --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     check(m.is_empty(), "new is empty")
     m.set("a", 1)
     m.set("b", 2)
@@ -45,7 +47,7 @@ fun str_map_basic(): void {
 
 fun str_map_edges(): void {
     println("-- HashMap edges --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     m.set("", 1)
     m.set("你好世界", 2)
     m.set("k1", 3)
@@ -59,7 +61,7 @@ fun str_map_edges(): void {
 
 fun str_map_growth(): void {
     println("-- HashMap growth --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     var i: i64 = 0
     while i < 1000 {
         m.set(key_of(i), i * 3)
@@ -97,7 +99,7 @@ fun str_map_growth(): void {
 
 fun int_map(): void {
     println("-- IntMap --")
-    val m = IntMap.new()
+    val m = IntMap.empty()
     m.set(-1, "neg1")
     m.set(-2, "neg2")
     m.set(0, "zero")
@@ -120,7 +122,7 @@ fun int_map(): void {
 
 fun nullable_values(): void {
     println("-- nullable value type --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     m.set("a", null)
     m.set("b", 5)
     check(m.get("a") == null && m.has("a"), "null value stored")
@@ -129,7 +131,7 @@ fun nullable_values(): void {
 
 fun str_set(): void {
     println("-- HashSet --")
-    val s = HashSet.new()
+    val s = HashSet.empty()
     check(s.add("x"), "add new true")
     check(!s.add("x"), "add dup false")
     check(s.add("y") && s.len() == 2, "len 2")
@@ -148,7 +150,7 @@ fun str_set(): void {
 
 fun int_set(): void {
     println("-- IntSet --")
-    val s = IntSet.new()
+    val s = IntSet.empty()
     check(s.add(-1) && !s.add(-1), "add/dedup -1")
     check(s.add(-2) && s.has(-1) && s.has(-2), "distinct negatives")
     var i: i64 = 0
@@ -172,7 +174,7 @@ type Pt = Pt(x: i64, y: i64)
 
 fun generic_keys(): void {
     println("-- generic keys --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     m.set(Pt(1, 2), "a")
     m.set(Pt(3, 4), "b")
     check((m.get(Pt(1, 2)) ?? "?") == "a", "record key content-equal")
@@ -187,7 +189,7 @@ fun generic_keys(): void {
     check((m.get([1, 2]) ?? "?") == "arr", "array key")
     check(m.get([1, 3]) == null, "array key miss")
 
-    val s = HashSet.new()
+    val s = HashSet.empty()
     check(s.add(Pt(5, 5)), "set add record")
     check(!s.add(Pt(5, 5)), "set dedup record content")
     check(s.has(Pt(5, 5)) && s.len() == 1, "set record has/len")
@@ -196,7 +198,7 @@ fun generic_keys(): void {
 // Iterator 实现:for-in 直接消费
 fun iterator_checks(): void {
     println("-- iterators --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     m.set("a", 1)
     m.set("b", 2)
     m.set("c", 3)
@@ -209,7 +211,7 @@ fun iterator_checks(): void {
     check(sum == 6 && count == 3, "map entries for-in")
     check(m.len() == 3, "iteration does not consume map")
 
-    val im = IntMap.new()
+    val im = IntMap.empty()
     im.set(5, 50)
     im.set(6, 60)
     var isum: i64 = 0
@@ -218,7 +220,7 @@ fun iterator_checks(): void {
     }
     check(isum == 11, "intmap entries for-in")
 
-    val s = HashSet.new()
+    val s = HashSet.empty()
     s.add("x")
     s.add("y")
     s.add("z")
@@ -228,7 +230,7 @@ fun iterator_checks(): void {
     }
     check(sc == 3, "set iter for-in")
 
-    val iset = IntSet.new()
+    val iset = IntSet.empty()
     iset.add(1)
     iset.add(2)
     var iset_sum: i64 = 0
@@ -238,7 +240,7 @@ fun iterator_checks(): void {
     check(iset_sum == 3, "intset iter for-in")
 
     // record 键迭代,访问 entry 字段
-    val rm = HashMap.new()
+    val rm = HashMap.empty()
     rm.set(Pt(1, 2), "a")
     rm.set(Pt(3, 4), "b")
     var found: i64 = 0
@@ -251,7 +253,7 @@ fun iterator_checks(): void {
 // HashIterator 活语义:while 手动驱动 next()(#104 两层修复后恢复此形式)
 fun mutation_semantics(): void {
     println("-- mutation during iteration --")
-    val m = HashMap.new()
+    val m = HashMap.empty()
     m.set("a", 1)
     m.set("b", 2)
     m.set("c", 3)
@@ -273,7 +275,7 @@ fun mutation_semantics(): void {
     check(sawNewB, "in-flight update visible in unvisited bucket")
 
     // 迭代中途触发扩容:迭代器持旧桶布局安全走完
-    val m2 = HashMap.new()
+    val m2 = HashMap.empty()
     var i: i64 = 0
     while i < 30 { m2.set("k{i}", i); i = i + 1 }
     val it2 = m2.entries()
@@ -293,6 +295,125 @@ fun mutation_semantics(): void {
     check(m2.len() == 80, "map kept growing to 80")
 }
 
+// ── List<T>:标量增长路(fill+memcpy)──
+fun list_scalar(): void {
+    println("-- List scalar --")
+    val xs = List.empty()
+    check(xs.is_empty(), "new empty")
+    check(xs.capacity() >= 0, "capacity readable")
+    var i: i64 = 0
+    while i < 2000 {
+        xs.push(i * 3)
+        i = i + 1
+    }
+    check(xs.len() == 2000, "len 2000")
+    check((xs.get(0) ?? -1) == 0, "get first")
+    check((xs.get(1000) ?? -1) == 3000, "get mid")
+    check((xs.get(1999) ?? -1) == 5997, "get last")
+    check(xs.get(2000) == null, "get OOB null")
+    xs.set(5, 777)
+    check((xs.get(5) ?? -1) == 777, "set overwrite")
+
+    // as_array 快照独立:后续 push 不影响
+    val snap = xs.as_array()
+    check(snap.len() == 2000, "as_array len")
+    xs.push(424242)
+    check(snap.len() == 2000, "snapshot immune to later push")
+    check((xs.get(2000) ?? -1) == 424242, "push after snapshot")
+
+    // pop:LIFO + 空弹 null
+    check((xs.pop() ?? -1) == 424242, "pop last")
+    check((xs.pop() ?? -1) == 5997, "pop again")
+    check(xs.len() == 1999, "len after pops")
+}
+
+// ── List<T>:非标量增长路(引擎 concat)──
+fun list_nonscalar(): void {
+    println("-- List non-scalar --")
+    val ss = List.empty()
+    var i: i64 = 0
+    while i < 500 {
+        ss.push("item{i}")
+        i = i + 1
+    }
+    check(ss.len() == 500, "str len 500")
+    check((ss.get(0) ?? "?") == "item0", "str first")
+    check((ss.get(499) ?? "?") == "item499", "str last")
+
+    // record 元素(泛型 record 走 concat 增长)
+    val ps = List.empty()
+    var k: i64 = 0
+    while k < 300 {
+        ps.push(Pt(k, k * 2))
+        k = k + 1
+    }
+    val arr = ps.as_array()
+    check(arr.len() == 300, "record list len")
+    check(arr[150].x == 150 && arr[150].y == 300, "record content intact")
+
+    // 别名语义:浅共享,互见修改(与数组/map 同规)
+    val a = List.empty()
+    a.push(1)
+    val b = a
+    b.push(2)
+    a.push(3)
+    check(a.len() == 3 && b.len() == 3, "alias shares mutations")
+
+    // 空 pop
+    val e = List.empty()
+    check(e.pop() == null, "pop empty null")
+    check(e.as_array().len() == 0, "as_array empty")
+
+    // List.from:数组快照入表,入表后互不影响
+    val src: i64[] = [1, 2, 3]
+    val fl = List.from(src)
+    check(fl.len() == 3, "from len")
+    fl.push(4)
+    fl.set(0, 99)
+    check(src.len() == 3 && src[0] == 1, "from snapshots input")
+    check(fl.len() == 4 && (fl.get(0) ?? -1) == 99, "from list independent")
+}
+
+// ── 双容器大规模共存:中程循环回收压力阀回归锚 ──
+// (曾因完成帧不在根集合 + Adt 字段不可穿越,5 万级双容器被误判死 → 退出 UAF)
+fun containers_scale_regression(): void {
+    println("-- scale regression (cycle-collector roots) --")
+    val im = IntMap.empty()
+    var i: i64 = 0
+    while i < 50000 {
+        im.set(i * 7, i)
+        i = i + 1
+    }
+    val s = IntSet.empty()
+    i = 0
+    while i < 50000 {
+        s.add(i * 3)
+        i = i + 1
+    }
+    check(im.len() == 50000, "intmap 50k entries")
+    check(s.len() == 50000, "intset 50k elements")
+    var ok = true
+    i = 0
+    while i < 50000 {
+        if (im.get(i * 7) ?? -1) != i { ok = false }
+        i = i + 1
+    }
+    check(ok, "intmap values intact after valve window")
+    check(im.keys().len() == 50000, "intmap keys 50k")
+    check(s.items().len() == 50000, "intset items 50k")
+    // clear 后重建(fill 路)
+    val m = HashMap.empty()
+    i = 0
+    while i < 100 {
+        m.set("c{i}", i)
+        i = i + 1
+    }
+    m.clear()
+    check(m.len() == 0 && m.is_empty(), "clear empties")
+    m.set("after", 1)
+    check((m.get("after") ?? -1) == 1 && m.len() == 1, "reinsert after clear")
+}
+
 fun main(): void {
     str_map_basic()
     str_map_edges()
@@ -304,5 +425,8 @@ fun main(): void {
     mutation_semantics()
     str_set()
     int_set()
+    list_scalar()
+    list_nonscalar()
+    containers_scale_regression()
     summary()
 }

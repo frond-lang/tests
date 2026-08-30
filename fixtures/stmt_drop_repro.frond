@@ -1,0 +1,39 @@
+import std.collections.List
+type Inner = | IA(str) | IB
+type Mid = | MA(Inner, i64[]) | MB
+type Outer = | OA(Mid) | OB
+fun f(o: Outer, acc: List<str>): i64 {
+    match o {
+        OA(mid) => {
+            match mid {
+                MA(inner, xs) => {
+                    match inner {
+                        IA(name) => {
+                            var i: usize = 0
+                            while i < xs.len() {
+                                match xs[i] {
+                                    0 => {
+                                        acc.push(name)
+                                        println("post")
+                                        1
+                                    },
+                                    _ => { 0 },
+                                }
+                                i = i + 1
+                            }
+                            acc.len()
+                        },
+                        IB => { 0 },
+                    }
+                },
+                MB => { 0 },
+            }
+        },
+        OB => { 0 },
+    }
+}
+fun main(): void {
+    val acc = List.empty<str>()
+    println("{f(OA(MA(IA("x"), [0, 0, 0])), acc)}")
+    println("len={acc.len()}")
+}

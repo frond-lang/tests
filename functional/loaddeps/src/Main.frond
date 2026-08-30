@@ -1,0 +1,33 @@
+// loaddeps — 1C 模块加载差分夹具(正路径全家桶):
+// 文件模块 + 目录模块(pack.frond)+ 兄弟符号回退(std.time.TimeComponents
+// 是 SystemTime.frond 的导出,不是模块文件)。验收:RESULT: ALL PASSED。
+
+import Helper
+import Store
+import Store.Memory
+import std.time.TimeComponents
+
+var failures: i64 = 0
+
+fun check(ok: bool, name: str): void {
+    if ok {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun main(): void {
+    check(helper_value() == 41, "file module")
+    check(store_value() == 7, "pack directory module")
+
+    val tc = TimeComponents(2026 as i32, 8 as u8, 28 as u8, 12 as u8, 0 as u8, 0 as u8, 0 as u32, 0 as u8, 0 as u16)
+    check(tc.year == 2026, "sibling symbol fallback")
+
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILURES")
+    }
+}

@@ -1,0 +1,10 @@
+// 菱形继承:两个基类有公共祖先 —— 字段按名访问无限定语法,重复祖先字段
+// 无解,声明期必须拒绝(线性化退化为声明序的前提)。
+// EXPECT: diamond inheritance forbidden
+type A2 = A2(x: i32)
+type B2(A2) = B2(y: i32)
+type C2(A2, B2) = C2(z: i32)
+fun main(): void {
+    val v = C2(1, 2, 3)
+    println("{v.x}")
+}

@@ -1,0 +1,5 @@
+// Helper.frond — 1C 差分夹具:普通文件模块(搜索路径直查)。
+
+pub fun helper_value(): i64 {
+    41
+}

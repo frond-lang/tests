@@ -1,0 +1,319 @@
+// crypto_primitives — 密码学公共地基验收:
+//   CSPRNG(Rand.secure_bytes:bcrypt.dll / /dev/urandom 纯 Frond 组合)
+//   SHA-256(builtin 内嵌 C 原语,FIPS 180 向量)
+//   HMAC-SHA256(RFC 4231 向量)
+//   HKDF-SHA256(RFC 5869 向量)
+//   真实闭环:llvm-static tar.gz 的 sha256 对照 release 的 .sha256
+import std.rand.Rand
+import std.core.hash.Sha256
+import std.core.hash.Sha512
+import std.crypto.X25519
+import std.crypto.AesGcm
+import std.encoding.Hex
+import std.io.Fs
+import std.io.Path
+import std.core.types.Str
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+fun hex_of(data: u8[]): str {
+    Hex.encode(data)
+}
+
+// 重复字节向量(RFC 测试里的 0x0b*22 等)。
+fun repeat(b: u8, n: usize): u8[] {
+    var out: u8[] = []
+    var i = 0 as usize
+    while i < n {
+        out = out ++ [b]
+        i = i + 1
+    }
+    out
+}
+
+fun seq_bytes(from: u8, to: u8): u8[] {
+    var out: u8[] = []
+    var b = from
+    while b <= to {
+        out = out ++ [b]
+        if b == 255u8 {
+            return out
+        }
+        b = b + 1u8
+    }
+    out
+}
+
+fun secure_cases(): void {
+    match Rand.secure_bytes(0) {
+        Ok(b) => check(b.len() == 0, "secure_bytes(0) empty"),
+        Error(e) => check(false, "secure_bytes(0) ({e.message})"),
+    }
+    val a = match Rand.secure_bytes(64) {
+        Ok(b) => b,
+        Error(e) => {
+            check(false, "secure_bytes(64) ({e.message})")
+            return
+        },
+    }
+    val c = match Rand.secure_bytes(64) {
+        Ok(b) => b,
+        Error(e) => {
+            check(false, "secure_bytes(64) again ({e.message})")
+            return
+        },
+    }
+    check(a.len() == 64 && c.len() == 64, "secure_bytes lengths")
+    var all_zero = true
+    var i = 0 as usize
+    while i < 64 {
+        if a[i] != 0u8 {
+            all_zero = false
+        }
+        i = i + 1
+    }
+    check(!all_zero, "secure_bytes not all-zero")
+    check(hex_of(a) != hex_of(c), "two secure samples differ")
+}
+
+fun sha256_cases(): void {
+    check(hex_of(Sha256.sha256("abc".bytes()))
+        == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+        "sha256(abc) FIPS vector")
+    check(hex_of(Sha256.sha256("".bytes()))
+        == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "sha256(empty) FIPS vector")
+    check(hex_of(Sha256.sha256("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq".bytes()))
+        == "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1",
+        "sha256(448-bit msg) FIPS vector")
+    // 一百万个 'a'(FIPS 长向量;填充语法一次成型)
+    val big: u8[] = [97u8, ..1000000]
+    check(big.len() == 1000000, "million-'a' constructed")
+    check(hex_of(Sha256.sha256(big))
+        == "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0",
+        "sha256(million a) FIPS long vector")
+}
+
+fun sha512_cases(): void {
+    check(hex_of(Sha512.sha512("abc".bytes()))
+        == "ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f",
+        "sha512(abc) FIPS vector")
+    check(hex_of(Sha512.sha512("".bytes()))
+        == "cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e",
+        "sha512(empty) FIPS vector")
+    check(hex_of(Sha512.sha384("abc".bytes()))
+        == "cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7",
+        "sha384(abc) FIPS vector")
+    check(hex_of(Sha512.sha384("".bytes()))
+        == "38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b",
+        "sha384(empty) FIPS vector")
+    val big: u8[] = [97u8, ..1000000]
+    check(hex_of(Sha512.sha512(big))
+        == "e718483d0ce769644e2e42c7bc15b4638e1f98b13b2044285632a803afa973ebde0ff244877ea60a4cb0432ce577c31beb009c5c2c49aa2e4eadb217ad8cc09b",
+        "sha512(million a) FIPS long vector")
+    check(hex_of(Sha512.sha384(big))
+        == "9d0e1809716474cb086e834e310a4a1ced149e9c00f248527972cec5704c2a5b07b8b3dc38ecc4ebae97ddd87f3d8985",
+        "sha384(million a) FIPS long vector")
+}
+
+fun hbytes(s: str): u8[] {
+    match Hex.decode(s) {
+        null => [0u8, ..0],
+        b => b,
+    }
+}
+
+fun x25519_cases(): void {
+    // RFC 7748 §5.2 test vector 1
+    check(hex_of(X25519.x25519(
+            hbytes("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4"),
+            hbytes("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c")))
+        == "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552",
+        "x25519 rfc7748 vector 1")
+    // RFC 7748 §5.2 test vector 2
+    check(hex_of(X25519.x25519(
+            hbytes("4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d"),
+            hbytes("e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493")))
+        == "95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957",
+        "x25519 rfc7748 vector 2")
+    // RFC 7748 §6.1 Diffie-Hellman exchange: both sides agree on the secret
+    val alice_sk = hbytes("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a")
+    val bob_sk = hbytes("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb")
+    val alice_pk = X25519.public_key(alice_sk)
+    val bob_pk = X25519.public_key(bob_sk)
+    check(hex_of(alice_pk) == "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a",
+        "x25519 rfc7748 alice public key")
+    check(hex_of(bob_pk) == "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f",
+        "x25519 rfc7748 bob public key")
+    val s1 = X25519.x25519(alice_sk, bob_pk)
+    val s2 = X25519.x25519(bob_sk, alice_pk)
+    check(hex_of(s1) == hex_of(s2)
+        && hex_of(s1) == "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742",
+        "x25519 dh shared secret agreement")
+}
+
+fun gcm_cases(): void {
+    // NIST GCM spec test cases (verified against the python cryptography oracle)
+    val k0: u8[] = hbytes("feffe9928665731c6d6a8f9467308308")
+    val iv3: u8[] = hbytes("cafebabefacedbaddecaf888")
+    val pt3: u8[] = hbytes("d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255")
+    val aad4: u8[] = hbytes("feedfacedeadbeeffeedfacedeadbeefabaddad2")
+    val empty: u8[] = [0u8, ..0]
+    val zkey: u8[] = [0u8, ..16]
+    val ziv: u8[] = [0u8, ..12]
+    val zpt: u8[] = [0u8, ..16]
+
+    // TC1: empty everything
+    match AesGcm.seal(zkey, ziv, empty, empty) {
+        Ok(s) => check(hex_of(s.tag) == "58e2fccefa7e3061367f1d57a4e7455a", "gcm TC1 tag (empty)"),
+        Error(e) => check(false, "gcm TC1 ({e.message})"),
+    }
+    // TC2: zero key/iv, one zero block
+    match AesGcm.seal(zkey, ziv, empty, zpt) {
+        Ok(s) => check(hex_of(s.ct) == "0388dace60b6a392f328c2b971b2fe78"
+            && hex_of(s.tag) == "ab6e47d42cec13bdf53a67b21257bddf", "gcm TC2 ct+tag (zero block)"),
+        Error(e) => check(false, "gcm TC2 ({e.message})"),
+    }
+    // TC3: 64-byte pt, no aad
+    match AesGcm.seal(k0, iv3, empty, pt3) {
+        Ok(s) => check(hex_of(s.tag) == "4d5c2af327cd64a62cf35abd2ba6fab4", "gcm TC3 tag (64B pt)"),
+        Error(e) => check(false, "gcm TC3 ({e.message})"),
+    }
+    // TC4: with aad
+    match AesGcm.seal(k0, iv3, aad4, pt3) {
+        Ok(s) => check(hex_of(s.tag) == "da80ce830cfda02da2a218a1744f4c76", "gcm TC4 tag (aad)"),
+        Error(e) => check(false, "gcm TC4 ({e.message})"),
+    }
+    // TC16: aes-256 with aad
+    val k256: u8[] = hbytes("feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308")
+    match AesGcm.seal(k256, iv3, aad4, pt3) {
+        Ok(s) => check(hex_of(s.tag) == "2df7cd675b4f09163b41ebf980a7f638", "gcm TC16 tag (aes-256+aad)"),
+        Error(e) => check(false, "gcm TC16 ({e.message})"),
+    }
+    // roundtrip + tamper rejection (random-ish key from CSPRNG)
+    match Rand.secure_bytes(32) {
+        Ok(sk) => {
+            match AesGcm.seal(sk, iv3, aad4, pt3) {
+                Ok(s) => {
+                    match AesGcm.open(sk, iv3, aad4, s.ct, s.tag) {
+                        Ok(back) => check(hex_of(back) == hex_of(pt3), "gcm roundtrip (aes-256)"),
+                        Error(e) => check(false, "gcm open ({e.message})"),
+                    }
+                    // flip one tag bit -> reject
+                    var badtag = s.tag
+                    badtag[0] = badtag[0] ^ 1u8
+                    match AesGcm.open(sk, iv3, aad4, s.ct, badtag) {
+                        Ok(_) => check(false, "gcm tampered tag should reject"),
+                        Error(_) => check(true, "gcm tampered tag rejects"),
+                    }
+                },
+                Error(e) => check(false, "gcm seal256 ({e.message})"),
+            }
+        },
+        Error(e) => check(false, "gcm rng ({e.message})"),
+    }
+}
+
+fun hmac_cases(): void {
+    // RFC 4231 test case 1
+    val key1 = repeat(0x0bu8, 20)
+    check(hex_of(Sha256.hmac_sha256(key1, "Hi There".bytes()))
+        == "b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7",
+        "hmac rfc4231 case1")
+    // RFC 4231 test case 2 (short key "Jefe", data "what do ya want ...")
+    check(hex_of(Sha256.hmac_sha256("Jefe".bytes(),
+        "what do ya want for nothing?".bytes()))
+        == "5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+        "hmac rfc4231 case2")
+    // RFC 4231 test case 6 (key longer than block size: 131 bytes)
+    val key6 = repeat(0xaau8, 131)
+    check(hex_of(Sha256.hmac_sha256(key6,
+        "Test Using Larger Than Block-Size Key - Hash Key First".bytes()))
+        == "60e431591ee0b67f0d8a26aacbf5b77f8e0bc6213728c5140546040f0ee37f54",
+        "hmac rfc4231 case6 (long key)")
+}
+
+fun hkdf_cases(): void {
+    // RFC 5869 test case 1
+    val ikm = repeat(0x0bu8, 22)
+    val salt = seq_bytes(0x00u8, 0x0cu8)
+    val info = seq_bytes(0xf0u8, 0xf9u8)
+    check(hex_of(Sha256.hkdf_sha256(salt, ikm, info, 42))
+        == "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865",
+        "hkdf rfc5869 case1")
+    // RFC 5869 test case 3 (zero-length salt and info)
+    check(hex_of(Sha256.hkdf_sha256("".bytes(), repeat(0x0bu8, 22), "".bytes(), 42))
+        == "8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8",
+        "hkdf rfc5869 case3")
+}
+
+// 真实闭环:本地 llvm-static tar.gz 的 sha256 对照 release 的 .sha256 文件。
+fun llvm_asset_check(): void {
+    val asset = Path.from("../../../.llvm-dist/llvm-static-x86_64-pc-windows-msvc.tar.gz")
+    val expect_file = Path.from("expected.sha256")
+    // .sha256 由 runner 预置(从 release 下载);缺失则跳过(保持套件可移植)。
+    match Fs.exists(expect_file).await() {
+        Ok(true) => {},
+        _ => {
+            println("  SKIP: expected.sha256 not present (download from release to enable)")
+            return
+        },
+    }
+    val expect_raw = match Fs.read_file(expect_file).await() {
+        Ok(s) => s,
+        Error(e) => {
+            check(false, "read expected.sha256 ({e.message})")
+            return
+        },
+    }
+    val expect = Str.trim(expect_raw)
+    // 文件形如 "<hex>  <filename>";取首段。
+    val space = Str.index_of(expect, " ")
+    val hex = if space > 0 { Str.trim(expect[0..(space as usize)]) } else { expect }
+    val data = match Fs.read_file_bytes(asset).await() {
+        Ok(d) => d,
+        Error(e) => {
+            check(false, "read asset ({e.message})")
+            return
+        },
+    }
+    check(hex_of(Sha256.sha256(data)) == hex, "llvm tar.gz sha256 matches release digest")
+}
+
+fun main(): void {
+    println("--- secure randomness ---")
+    secure_cases()
+    println("--- sha256 ---")
+    sha256_cases()
+    println("--- sha512/384 ---")
+    sha512_cases()
+    println("--- x25519 ---")
+    x25519_cases()
+    println("--- aes-gcm ---")
+    gcm_cases()
+    println("--- hmac ---")
+    hmac_cases()
+    println("--- hkdf ---")
+    hkdf_cases()
+    println("--- real-world asset ---")
+    llvm_asset_check()
+    summary()
+}
