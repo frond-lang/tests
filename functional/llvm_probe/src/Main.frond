@@ -6,6 +6,7 @@
 // macOS 用系统 libSystem(计划 4c:零资产、链接期 -platform_version 钉下限);
 // Linux 用资产 linkview 的 crt + 真身 libc;Windows 用 mingw 视图。
 import Llvm
+import std.core.types.Str
 import std.os.Env
 import std.os.Info
 import std.os.Proc
@@ -51,6 +52,8 @@ fun link_args(tc: str, os: str, arch: str, obj: str, exe: str): str[] {
                 tc + "/linkview/libmingw32.a",
                 tc + "/linkview/libmingwex.a",
                 tc + "/linkview/libgcc.a",
+                tc + "/linkview/libgcc_eh.a",
+                tc + "/linkview/libwinpthread.a",
                 tc + "/linkview/libmsvcrt.a",
                 tc + "/linkview/libkernel32.a",
                 "/entry:mainCRTStartup", "/subsystem:console",
@@ -66,6 +69,7 @@ fun link_args(tc: str, os: str, arch: str, obj: str, exe: str): str[] {
             tc + "/linkview/crti.o",
             tc + "/linkview/crtn.o",
             tc + "/linkview/libc.so.6",
+            "-pie",
             "-dynamic-linker", loader,
             "-o", exe]
 }
@@ -108,11 +112,28 @@ fun run_probe(): Throw<void, FfiError> {
     check(true, "probe.o emitted (triple {triple})")
     lib.close()
 
-    // 4) 资产 lld(+ linkview)链接
+    // 4) 资产 lld(+ linkview)链接;capture 合并 stdout/stderr,
+    //    失败时逐行透传(runner 失败报告只 grep FAIL:/RESULT: 行)。
     val exe = if os == "windows" { "probe.exe" } else { "probe" }
-    val linker = Proc.spawn(tc + "/bin/lld", link_args(tc, os, arch, "probe.o", exe))?
-    val lrc = linker.wait()?
-    check(lrc == 0, "lld linked {exe} (exit {lrc})")
+    val out = match Proc.capture(tc + "/bin/lld", link_args(tc, os, arch, "probe.o", exe)) {
+        Ok(o) => o,
+        Error(e) => {
+            check(false, "spawn lld failed: {e.message}")
+            return Ok(void)
+        },
+    }
+    if out.exit_code != 0 {
+        val lines = Str.split(out.output, "\n")
+        var li: usize = 0
+        while li < lines.len() && li < 12 {
+            val line = lines[li]
+            if line.len() > 0 {
+                println("      FAIL: lld| {line}")
+            }
+            li = li + 1
+        }
+    }
+    check(out.exit_code == 0, "lld linked {exe} (exit {out.exit_code})")
 
     // 5) 跑产物,断言退出码 42
     val runner = Proc.spawn("./" + exe, [])?
