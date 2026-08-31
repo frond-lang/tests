@@ -372,31 +372,73 @@ fun main(): void {
     println("  perf anchors (release):")
     val n = 1048576 as usize
     val buf: u8[] = [0, ..n]
-    var t0 = Instant.now()
+    // 测量法说明:操作稳态 ~80µs,但单次掐表把 (a) 首调成本(符号解析/
+    // 分发预热,实测 4×)和 (b) 调度噪声(CI 四路并行 × 引擎 worker 线程,
+    // 一次抢占落窗即毫秒级)都算进预算 —— 阈值再宽也只是挪骰子。改为
+    // 预热一次 + 5 采样取 min:min 对 OS 噪声鲁棒,断言的正是声明意图
+    // (稳态未退化回解释执行,解释路径 ~2s/MB)。全部采样值入日志,
+    // 便于未来分布诊断。阈值不变。
     Mem.fill(buf, 7)
-    var t1 = Instant.now()
-    val fill_us = t1.duration_since(t0).as_micros()
-    println("    fill 1MB:    {fill_us} us")
-    check(fill_us < 5000, "perf: fill 1MB < 5ms")
+    var fill_min: i64 = 9223372036854775807
+    var fill_log = ""
+    var si: usize = 0
+    while si < 5 {
+        var t0 = Instant.now()
+        Mem.fill(buf, 7)
+        var t1 = Instant.now()
+        var us = t1.duration_since(t0).as_micros()
+        fill_log = fill_log + "{us} "
+        if us < fill_min {
+            fill_min = us
+        }
+        si = si + 1
+    }
+    println("    fill 1MB:    min={fill_min} us  samples: {fill_log}")
+    check(fill_min < 5000, "perf: fill 1MB < 5ms")
 
     val src1m: u8[] = [9, ..n]
-    t0 = Instant.now()
     Mem.copy(buf, 0, src1m, 0, n)
-    t1 = Instant.now()
-    val copy_us = t1.duration_since(t0).as_micros()
-    println("    copy 1MB:    {copy_us} us")
-    check(copy_us < 10000, "perf: copy 1MB < 10ms")
+    var copy_min: i64 = 9223372036854775807
+    var copy_log = ""
+    si = 0
+    while si < 5 {
+        var t0 = Instant.now()
+        Mem.copy(buf, 0, src1m, 0, n)
+        var t1 = Instant.now()
+        var us = t1.duration_since(t0).as_micros()
+        copy_log = copy_log + "{us} "
+        if us < copy_min {
+            copy_min = us
+        }
+        si = si + 1
+    }
+    println("    copy 1MB:    min={copy_min} us  samples: {copy_log}")
+    check(copy_min < 10000, "perf: copy 1MB < 10ms")
 
-    t0 = Instant.now()
-    val cl = Mem.clone(buf)
-    t1 = Instant.now()
-    val clone_us = t1.duration_since(t0).as_micros()
-    println("    clone 1MB:   {clone_us} us")
-    check(clone_us < 2000, "perf: clone 1MB < 2ms")
-    check(cl[0] == 9, "perf clone correct")
+    val cl0 = Mem.clone(buf)
+    var clone_min: i64 = 9223372036854775807
+    var clone_log = ""
+    si = 0
+    while si < 5 {
+        var t0 = Instant.now()
+        val cl = Mem.clone(buf)
+        var t1 = Instant.now()
+        var us = t1.duration_since(t0).as_micros()
+        clone_log = clone_log + "{us} "
+        if us < clone_min {
+            clone_min = us
+        }
+        check(cl[0] == 9, "perf clone correct")
+        si = si + 1
+    }
+    println("    clone 1MB:   min={clone_min} us  samples: {clone_log}")
+    check(clone_min < 2000, "perf: clone 1MB < 2ms")
 
     // 标量 intrinsic 锚点：i32 1M 元素（4MB）— 若退化回解释执行（每次
     // 迭代经引擎派发），将在百 ms 量级；C 快路含序列化/写回在 ms 量级。
+    // (t0/t1 供下方宽限锚点复用;前三个紧锚点已改为循环内局部声明)
+    var t0 = Instant.now()
+    var t1 = t0
     val big32: i32[] = [0, ..n]
     t0 = Instant.now()
     Mem.fill(big32, -12345)
