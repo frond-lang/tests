@@ -76,8 +76,15 @@ fun run_probe(): Throw<void, FfiError> {
     val tc = toolchain_dir()
     println("llvm_probe: os={os} arch={arch} tc={tc}")
 
-    // 1) 资产 LLVM 动态库(统一文件名,显式路径加载)
-    val lib = Lib.open(tc + "/lib/llvm.dylib")?
+    // 1) 资产 LLVM 动态库(统一逻辑名,扩展名随平台)
+    val libfile = if os == "windows" {
+        "llvm.dll"
+    } else if os == "macos" {
+        "llvm.dylib"
+    } else {
+        "llvm.so"
+    }
+    val lib = Lib.open(tc + "/lib/" + libfile)?
     Llvm.init_host_target(lib)?
 
     // 2) main(): i32 → ret 42

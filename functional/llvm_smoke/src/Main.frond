@@ -147,10 +147,13 @@ fun build_and_emit(): Throw<void, FfiError> {
     // 注意 LLVMAssemblyFile 产出的是目标汇编(Windows 上 MASM 风格),
     // 不是 .ll IR 文本;IR 文本要走 LLVMPrintModuleToString(char* 返回
     // 需要 read-cstr 桥,后续批次)。
+    // 错误出参给真缓冲(NULL 时失败路径直接段错误;CI 无 out/ 踩中过)
     val emit: ForeignFn<i32> = lib.lookup("LLVMTargetMachineEmitToFile", "u64, u64, cstr, u32, cbuf")?
-    val estat_s = emit.call(tm, module_ref, "out/add.s", 0u32, 0u64)?
+    val err_s: u64[] = [0u64]
+    val estat_s = emit.call(tm, module_ref, "out/add.s", 0u32, err_s)?
     check(estat_s == 0, "EmitToFile(.s asm) -> 0")
-    val estat_o = emit.call(tm, module_ref, "out/add.o", 1u32, 0u64)?
+    val err_o: u64[] = [0u64]
+    val estat_o = emit.call(tm, module_ref, "out/add.o", 1u32, err_o)?
     check(estat_o == 0, "EmitToFile(.o) -> 0")
 
     // ── 产物断言:.s 含 add 标签与 leal(Win64 前两参 rcx/rdx 相加);.o 非空 ──

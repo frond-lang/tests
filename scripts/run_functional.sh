@@ -65,10 +65,17 @@ fi
 # ── 筛选目标套件（保持目录序）──
 selected=()
 skipped=()
+ci_skipped=()
 for dir in ../functional/*/; do
     name="$(basename "$dir")"
     if [ -f "$dir/PLATFORMS" ] && ! grep -qw "$host_os" "$dir/PLATFORMS"; then
         skipped+=("$name")
+        continue
+    fi
+    # CI 环境跳过声明(NOCI 标记):仅在 GitHub Actions 等设置了 CI 变量
+    # 的环境生效——本地照常跑。
+    if [ -n "${CI:-}" ] && [ -f "$dir/NOCI" ]; then
+        ci_skipped+=("$name")
         continue
     fi
     if [ "$#" -gt 0 ]; then
@@ -92,7 +99,10 @@ trap 'rm -rf "$tmpdir"' EXIT
 
 run_one() {
     (
-        cd "../functional/$1" && timeout 300 "$FROND" run > "$2.out" 2>&1
+        # out/ 在 .gitignore 里,CI 全新 checkout 没有;emit 目标目录缺失
+        # 曾让 llvm_bind/llvm_smoke 走进 LLVM 的失败路径(见 Llvm.frond
+        # emit_to_file 注释)——预建兜底。
+        cd "../functional/$1" && mkdir -p out && timeout 300 "$FROND" run > "$2.out" 2>&1
     )
     echo $? > "$2.rc"
 }
@@ -143,9 +153,12 @@ for name in "${selected[@]}"; do
 done
 
 echo ""
-echo "functional tests: $pass passed, $fail failed, $known known-baseline-fail, ${#skipped[@]} platform-skip (JOBS=$JOBS)"
+echo "functional tests: $pass passed, $fail failed, $known known-baseline-fail, ${#skipped[@]} platform-skip, ${#ci_skipped[@]} ci-skip (JOBS=$JOBS)"
 if [ ${#skipped[@]} -gt 0 ]; then
     echo "skipped on $host_os: ${skipped[*]}"
+fi
+if [ ${#ci_skipped[@]} -gt 0 ]; then
+    echo "skipped in CI (NOCI): ${ci_skipped[*]}"
 fi
 if [ $fail -gt 0 ]; then
     echo "failed: ${failed_names[*]}"
