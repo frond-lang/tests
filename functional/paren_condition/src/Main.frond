@@ -1,0 +1,30 @@
+// paren_condition — `if (`/`while (` followed by a POSTFIX continuation
+// (`.field`, `[idx]`, `as`) is a receiver grouping, not a wrapped condition:
+// must parse. `if (cond) {`-style full wraps stay rejected (negative case in
+// tests/negative). Engine fix: paren_wraps_full_condition postfix check.
+type R = R(pub v: i64?)
+fun scan(xs: R[]): i64 {
+    var hits: i64 = 0
+    var j: usize = 0
+    while (j < xs.len()) == true {
+        if (xs[j] ?? R(null)).v != null {
+            hits = hits + 1
+        }
+        if (xs[j]).v == null {
+            hits = hits + 10
+        }
+        j = j + 1
+    }
+    hits
+}
+fun main(): void {
+    val xs = [R(1i64), R(null), R(3i64)]
+    val r = scan(xs)
+    println("hits={r}")
+    val a: i64? = 5
+    if (a ?? 0) == 5 { println("eq ok") }
+    if (xs[0]).v == 1 { println("idx ok") }
+    val b = (xs.len() as i64) * 2
+    println("b={b}")
+    if r == 12 && b == 6 { println("RESULT: ALL PASSED") } else { println("RESULT: FAILED") }
+}

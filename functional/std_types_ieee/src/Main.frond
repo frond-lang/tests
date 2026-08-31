@@ -1,0 +1,138 @@
+// std_types_ieee — std.core.types numeric family conformance.
+//
+// Floats: IEEE 754 boundary constants, correctly-rounded parse (decimal +
+// hex + inf/nan spellings), underflow-to-zero/subnormal, overflow errors.
+// Integers: overflow/malformed errors (never a silent wrap), optional '+',
+// unsigned rejects '-'. F128 parse is differential against the compiler's
+// own f128 decimal literals (same algorithm, must match bit-for-bit).
+import std.core.types
+import std.math
+
+fun ck(name: str, cond: bool): void {
+    if !cond { println("FAIL " + name) }
+}
+
+// Ok-path check: parses and equals expect.
+fun okv<T>(name: str, r: Throw<T, ParseError>, expect: T): void {
+    match r {
+        Ok(v) => ck(name, v == expect),
+        Err(e) => println("FAIL " + name + " (unexpected error)"),
+    }
+}
+
+// Err-path check: errors with the wanted kind (true = Malformed, false = Overflow).
+fun errv<T>(name: str, r: Throw<T, ParseError>, want_malformed: bool): void {
+    match r {
+        Ok(v) => println("FAIL " + name + " (unexpected Ok)"),
+        Err(e) => match e.kind {
+            Malformed => ck(name, want_malformed),
+            Overflow => ck(name, !want_malformed),
+        },
+    }
+}
+
+fun main(): void {
+    // ── F64 ──
+    okv("f64_round", F64.parse("0.1"), 0.1)
+    okv("f64_round2", F64.parse("1.0000000000000002"), 1.0000000000000002)
+    okv("f64_max", F64.parse("1.7976931348623157e308"), F64.MAX)
+    okv("f64_min", F64.parse("2.2250738585072014e-308"), F64.MIN)
+    okv("f64_min_sub", F64.parse("5e-324"), F64.MIN_SUBNORMAL)
+    ck("f64_eps", F64.EPSILON == 0x1p-52)
+    okv("f64_underflow", F64.parse("1e-400"), 0.0)
+    errv("f64_ovf", F64.parse("1e400"), false)
+    okv("f64_inf", F64.parse("inf"), Math.inf_f64())
+    okv("f64_neginf", F64.parse("-INF"), Math.neg_inf_f64())
+    val nn = F64.parse("nan")
+    match nn { Ok(v) => ck("f64_nan", v != v), Err(e) => println("FAIL f64_nan") }
+    okv("f64_hex", F64.parse("0x1.8p3"), 12.0)
+    okv("f64_plus", F64.parse("+1.5"), 1.5)
+    errv("f64_space", F64.parse(" 1"), true)
+    errv("f64_junk", F64.parse("1x"), true)
+    errv("f64_empty", F64.parse(""), true)
+    match F64.parse("-1.5e-320") { Ok(v) => ck("f64_sub", v != 0.0 && v < 0.0), Err(e) => println("FAIL f64_sub") }
+    okv("f64_negzero", F64.parse("-0.0"), 0.0)
+    // ── F32 ──
+    okv("f32_round", F32.parse("0.1"), 0.1f32)
+    okv("f32_half", F32.parse("0.5"), 0.5f32)
+    okv("f32_max", F32.parse("3.4028234663852886e38"), F32.MAX)
+    okv("f32_min_sub", F32.parse("1.401298464324817e-45"), F32.MIN_SUBNORMAL)
+    errv("f32_ovf", F32.parse("1e39"), false)
+    okv("f32_underflow", F32.parse("1e-60"), 0.0f32)
+    ck("f32_eps", F32.EPSILON == 0x1p-23f32)
+    okv("f32_inf", F32.parse("Infinity"), Math.inf_f32())
+    // ── F16 ──
+    okv("f16_half", F16.parse("0.5"), 0.5f16)
+    okv("f16_max", F16.parse("65504"), F16.MAX)
+    errv("f16_ovf", F16.parse("65520"), false)
+    okv("f16_round_up", F16.parse("65519.9"), F16.MAX)
+    okv("f16_min_sub", F16.parse("5.960464477539063e-08"), F16.MIN_SUBNORMAL)
+    okv("f16_under", F16.parse("1e-9"), 0.0f16)
+    okv("f16_inf", F16.parse("infinity"), Math.inf_f16())
+    match F16.parse("nan") { Ok(a) => match F16.parse("nan") { Ok(b2) => ck("f16_nan", a != b2), Err(e) => println("FAIL f16_nan") }, Err(e) => println("FAIL f16_nan") }
+    okv("f16_neg", F16.parse("-2.5"), 0.0f16 - 2.5f16)
+    ck("f16_eps", F16.EPSILON == 0x1p-10f16)
+    // ── F128: exact hex ──
+    okv("f128_hex_pi", F128.parse("0x1.921fb54442d18469898cc51701b8p+1"), Math.PI_F128)
+    okv("f128_hex_plain", F128.parse("0x1p+0"), 1.0f128)
+    okv("f128_hex_frac", F128.parse("-0x1.8p-1"), 0.0f128 - 0.75f128)
+    okv("f128_sub_min", F128.parse("0x1p-16494"), F128.MIN_SUBNORMAL)
+    okv("f128_under", F128.parse("0x1p-16500"), 0.0f128)
+    okv("f128_tie_even", F128.parse("0x1.00000000000000000000000000008p-16382"), F128.MIN)
+    ck("f128_max", F128.MAX == 0x1.ffffffffffffffffffffffffffffp+16383f128)
+    ck("f128_min", F128.MIN == 0x1p-16382f128)
+    ck("f128_min_sub", F128.MIN_SUBNORMAL == 0x1p-16494f128)
+    ck("f128_eps", F128.EPSILON == 0x1p-112f128)
+    // ── F128: decimal differential vs the compiler's own f128 literals ──
+    okv("d_01", F128.parse("0.1"), 0.1f128)
+    okv("d_pi", F128.parse("3.14159265358979323846264338327950288"), 3.14159265358979323846264338327950288f128)
+    okv("d_e", F128.parse("2.71828182845904523536028747135266249"), 2.71828182845904523536028747135266249f128)
+    okv("d_max", F128.parse("1.18973149535723176508575932662800702e4932"), F128.MAX)
+    ck("d_max_lit", 1.18973149535723176508575932662800702e4932f128 == F128.MAX)
+    okv("d_minsub", F128.parse("6.47517511943802511092443895822764655e-4966"), F128.MIN_SUBNORMAL)
+    ck("d_minsub_lit", 6.47517511943802511092443895822764655e-4966f128 == F128.MIN_SUBNORMAL)
+    okv("d_e4932", F128.parse("1e-4932"), 1e-4932f128)
+    okv("d_e4967_zero", F128.parse("1e-4967"), 0.0f128)
+    ck("d_e4968_zero", 1e-4968f128 == 0.0f128)
+    okv("d_e4966_zero", F128.parse("1e-4966"), 0.0f128)
+    okv("d_submid", F128.parse("1.5e-4950"), 1.5e-4950f128)
+    okv("d_tie_down", F128.parse("0x1p-16395"), 0x1p-16395f128)
+    okv("d_e400", F128.parse("1e400"), 1e400f128)
+    errv("d_ovf", F128.parse("1.2e4933"), false)
+    okv("d_neg", F128.parse("-2.75e-100"), -2.75e-100f128)
+    okv("d_50dig", F128.parse("12345678901234567890123456789012345678901234567890"), 12345678901234567890123456789012345678901234567890.0f128)
+    okv("d_inf", F128.parse("inf"), Math.inf_f128())
+    match F128.parse("nan") { Ok(a) => match F128.parse("nan") { Ok(b2) => ck("d_nan", a != b2), Err(e) => println("FAIL d_nan") }, Err(e) => println("FAIL d_nan") }
+    errv("d_malformed", F128.parse("1.2.3"), true)
+    errv("d_hex_ovf", F128.parse("0x1p+16384"), false)
+    errv("d_hex_junk", F128.parse("0x1p+1q"), true)
+    // ── integers: overflow errors, '+' accepted, unsigned rejects '-' ──
+    errv("i8_ovf", I8.parse("128"), false)
+    okv("i8_min", I8.parse("-128"), I8.MIN)
+    okv("i8_max", I8.parse("127"), I8.MAX)
+    okv("i8_plus", I8.parse("+42"), 42)
+    errv("i16_ovf", I16.parse("32768"), false)
+    errv("i32_ovf", I32.parse("2147483648"), false)
+    okv("i64_min", I64.parse("-9223372036854775808"), I64.MIN)
+    errv("i64_ovf", I64.parse("9223372036854775808"), false)
+    okv("i128_max", I128.parse("170141183460469231731687303715884105727"), I128.MAX)
+    okv("i128_min", I128.parse("-170141183460469231731687303715884105728"), I128.MIN)
+    errv("i128_ovf", I128.parse("170141183460469231731687303715884105728"), false)
+    okv("isize_neg", Isize.parse("-42"), 0 - 42)
+    okv("isize_max", Isize.parse("9223372036854775807"), Isize.MAX)
+    errv("isize_ovf", Isize.parse("9223372036854775808"), false)
+    errv("u8_ovf", U8.parse("256"), false)
+    okv("u8_max", U8.parse("255"), 255)
+    errv("u8_neg", U8.parse("-1"), true)
+    okv("u8_plus", U8.parse("+7"), 7)
+    okv("u64_max", U64.parse("18446744073709551615"), U64.MAX)
+    errv("u64_ovf", U64.parse("18446744073709551616"), false)
+    okv("u128_max", U128.parse("340282366920938463463374607431768211455"), U128.MAX)
+    errv("u128_ovf", U128.parse("340282366920938463463374607431768211456"), false)
+    okv("usize_max", Usize.parse("18446744073709551615"), Usize.MAX)
+    errv("usize_ovf", Usize.parse("18446744073709551616"), false)
+    errv("int_empty", I32.parse(""), true)
+    errv("int_sign_only", I32.parse("+"), true)
+    errv("int_junk", I32.parse("12x3"), true)
+    println("RESULT: ALL PASSED")
+}

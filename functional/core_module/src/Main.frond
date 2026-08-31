@@ -14,6 +14,14 @@ fun check(cond: bool, name: str): void {
     }
 }
 
+// Unwrap a Throw with a fallback (tests only assert the Ok path value).
+fun pv<T>(r: Throw<T, ParseError>, fallback: T): T {
+    match r {
+        Ok(v) => v,
+        Err(e) => fallback,
+    }
+}
+
 fun main(): void {
     // ── 整型边界常量(每模块独立槽:同名 MAX/MIN 不串)──────────
     check(I8.MAX == 127 && I8.MIN == -128, "I8 bounds")
@@ -23,6 +31,8 @@ fun main(): void {
     check(U8.MAX == 255, "U8 bounds")
     check(U16.MAX == 65535, "U16 bounds")
     check(U32.MAX == 4294967295, "U32 bounds")
+    check(Usize.MAX == 18446744073709551615, "Usize bounds (C UINTPTR_MAX)")
+    check(Isize.MAX == 9223372036854775807 && Isize.MIN == -9223372036854775808, "Isize bounds (C INTPTR_MAX/MIN)")
     check(U64.MAX == 18446744073709551615, "U64 bounds")
     check(I128.MAX == 170141183460469231731687303715884105727, "I128 MAX")
     check(I128.MIN == -170141183460469231731687303715884105728, "I128 MIN")
@@ -34,30 +44,39 @@ fun main(): void {
     check(F64.MAX == 1.7976931348623157e308, "F64 MAX")
     check(F64.MIN == 2.2250738585072014e-308, "F64 MIN (smallest positive normal)")
 
-    // ── 整型 parse ───────────────────────────────────────────
-    check((I8.parse("42") ?? -1) == 42, "I8.parse 42")
-    check((I64.parse("-42") ?? 0) == -42, "I64.parse negative")
-    check((U64.parse("18446744073709551615") ?? 0) == U64.MAX, "U64.parse full range")
-    check(I128.parse("170141183460469231731687303715884105727") == I128.MAX, "I128.parse MAX")
-    match I8.parse("") { null => check(true, "I8.parse empty is null"), _ => check(false, "I8.parse empty is null") }
-    match I32.parse("12a") { null => check(true, "I32.parse bad char is null"), _ => check(false, "I32.parse bad char is null") }
-    match I32.parse("-") { null => check(true, "I32.parse lone sign is null"), _ => check(false, "I32.parse lone sign is null") }
+    // ── 整型 parse（Throw<_, ParseError> 契约）─────────────────
+    check(pv(I8.parse("42"), 0) == 42, "I8.parse 42")
+    check(pv(I64.parse("-42"), 0) == -42, "I64.parse negative")
+    check(pv(U64.parse("18446744073709551615"), 0) == U64.MAX, "U64.parse full range")
+    match U8.parse("-1") { Err(e) => check(true, "U8.parse negative errors"), Ok(_) => check(false, "U8.parse negative errors") }
+    match U32.parse("-1") { Err(e) => check(true, "U32.parse negative errors"), Ok(_) => check(false, "U32.parse negative errors") }
+    match U64.parse("-1") { Err(e) => check(true, "U64.parse negative errors"), Ok(_) => check(false, "U64.parse negative errors") }
+    match U128.parse("-1") { Err(e) => check(true, "U128.parse negative errors"), Ok(_) => check(false, "U128.parse negative errors") }
+    match Usize.parse("-1") { Err(e) => check(true, "Usize.parse negative errors"), Ok(_) => check(false, "Usize.parse negative errors") }
+    check(pv(Isize.parse("-42"), 0) == -42, "Isize.parse negative")
+    check(pv(Isize.parse("9223372036854775807"), 0) == Isize.MAX, "Isize.parse MAX via C bounds")
+    check(pv(I128.parse("170141183460469231731687303715884105727"), 0) == I128.MAX, "I128.parse MAX")
+    match I8.parse("") { Err(e) => check(true, "I8.parse empty errors"), Ok(_) => check(false, "I8.parse empty errors") }
+    match I32.parse("12a") { Err(e) => check(true, "I32.parse bad char errors"), Ok(_) => check(false, "I32.parse bad char errors") }
+    match I32.parse("-") { Err(e) => check(true, "I32.parse lone sign errors"), Ok(_) => check(false, "I32.parse lone sign errors") }
+    match I32.parse("2147483648") { Err(e) => check(true, "I32.parse overflow errors"), Ok(_) => check(false, "I32.parse overflow errors") }
 
-    // ── 浮点 parse ───────────────────────────────────────────
-    check(F64.parse("3.5") == 3.5, "F64.parse fraction")
-    check(F64.parse("3.5e2") == 350.0, "F64.parse exponent")
-    check(F64.parse("-0.5") == -0.5, "F64.parse negative fraction")
-    check((F32.parse("2.5") ?? 0) == 2.5, "F32.parse keeps fraction")
-    check((F16.parse("1.5") ?? 0) == 1.5, "F16.parse keeps fraction")
-    check((F64.parse("2.5") ?? 0) as f32? == null || true, "nullable cast sanity")
-    match F32.parse("bad") { null => check(true, "F32.parse junk is null"), _ => check(false, "F32.parse junk is null") }
+    // ── 浮点 parse（Throw<_, ParseError> 契约）────────────────
+    check(pv(F64.parse("3.5"), 0.0) == 3.5, "F64.parse fraction")
+    check(pv(F64.parse("3.5e2"), 0.0) == 350.0, "F64.parse exponent")
+    check(pv(F64.parse("-0.5"), 0.0) == -0.5, "F64.parse negative fraction")
+    check(pv(F32.parse("2.5"), 0.0f32) == 2.5f32, "F32.parse keeps fraction")
+    check(pv(F16.parse("1.5"), 0.0f16) == 1.5f16, "F16.parse keeps fraction")
+    match F64.parse("1e400") { Err(e) => check(true, "F64.parse overflow errors"), Ok(_) => check(false, "F64.parse overflow errors") }
+    check((pv(F64.parse("2.5"), 0.0) as f32?) == null || true, "nullable cast sanity")
+    match F32.parse("bad") { Err(e) => check(true, "F32.parse junk errors"), Ok(_) => check(false, "F32.parse junk errors") }
     val nb: f64? = null
     val nb32 = nb as f32?
     match nb32 { null => check(true, "cast null stays null"), _ => check(false, "cast null stays null") }
-    match F64.parse("") { null => check(true, "F64.parse empty is null"), _ => check(false, "F64.parse empty is null") }
-    match F64.parse(".") { null => check(true, "F64.parse lone dot is null"), _ => check(false, "F64.parse lone dot is null") }
-    match F64.parse("1e") { null => check(true, "F64.parse dangling exp is null"), _ => check(false, "F64.parse dangling exp is null") }
-    match F64.parse("1e999") { null => check(true, "F64.parse overflow is null"), _ => check(false, "F64.parse overflow is null") }
+    match F64.parse("") { Err(e) => check(true, "F64.parse empty errors"), Ok(_) => check(false, "F64.parse empty errors") }
+    match F64.parse(".") { Err(e) => check(true, "F64.parse lone dot errors"), Ok(_) => check(false, "F64.parse lone dot errors") }
+    match F64.parse("1e") { Err(e) => check(true, "F64.parse dangling exp errors"), Ok(_) => check(false, "F64.parse dangling exp errors") }
+    match F64.parse("1e999") { Err(e) => check(true, "F64.parse overflow errors"), Ok(_) => check(false, "F64.parse overflow errors") }
 
     // ── Bool.parse ───────────────────────────────────────────
     check(Bool.parse("true") == true && Bool.parse("false") == false, "Bool.parse true/false")
