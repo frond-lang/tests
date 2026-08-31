@@ -1,0 +1,128 @@
+// llvm_probe — Stage 2 第一刀探针(BOOTSTRAP_PLAN 八):
+//   main ret 42 → LLVM-C(手写 IR,不经 lowering)emit .obj
+//   → 资产内 lld + linkview 链接 → 跑产物 exe → 断言退出码 42。
+// 零宿主工具链:llvm.dylib 与 lld 全部来自 llvm-static 资产 tarball
+// (dev 态 Lib.open 显式路径;embed 后统一走 Assets.extract,见计划 4b)。
+// macOS 用系统 libSystem(计划 4c:零资产、链接期 -platform_version 钉下限);
+// Linux 用资产 linkview 的 crt + 真身 libc;Windows 用 mingw 视图。
+import Llvm
+import std.os.Env
+import std.os.Info
+import std.os.Proc
+
+// 资产解析序(最终形态的雏形,BOOTSTRAP_PLAN 4b):发布态由
+// Assets.extract 从内嵌字节解出(默认)→ 开发态 FRONDC_TOOLCHAIN
+// 环境变量 → 套件内目录。frondc 无工具链子命令——系统判断只发生在
+// 加载/链接策略层(flavor/参数表),不在资产选择层。
+fun toolchain_dir(): str {
+    val env = Env.get("FRONDC_TOOLCHAIN")
+    if env != "" {
+        return env
+    }
+    "assets/toolchain"
+}
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+// lld 是通用驱动:按 -flavor 分派 darwin/gnu/link(macOS/Linux/Windows)。
+fun link_args(tc: str, os: str, arch: str, obj: str, exe: str): str[] {
+    if os == "macos" {
+        // 探针零外部符号(ret 42)→ 零库链接:产物无 LC_LOAD_DYLIB,dyld
+        // 直接跑 LC_MAIN。真 C 层(frond_rt 调 libc)时代 macOS 需要链接
+        // 视图(系统盘上已无 libSystem 真身/缓存外副本)——SDK tbd 或
+        // 资产自带,见 BOOTSTRAP_PLAN 4c 记账。
+        val a = if arch == "aarch64" { "arm64" } else { "x86_64" }
+        return ["-flavor", "darwin", obj,
+                "-arch", a, "-platform_version", "macos", "11.0", "15.0",
+                "-o", exe]
+    }
+    if os == "windows" {
+        return ["-flavor", "link", obj,
+                tc + "/linkview/crt2.o",
+                tc + "/linkview/libmingw32.a",
+                tc + "/linkview/libmingwex.a",
+                tc + "/linkview/libgcc.a",
+                tc + "/linkview/libmsvcrt.a",
+                tc + "/linkview/libkernel32.a",
+                "/entry:mainCRTStartup", "/subsystem:console",
+                "/out:" + exe]
+    }
+    val loader = if arch == "aarch64" {
+        "/lib/ld-linux-aarch64.so.1"
+    } else {
+        "/lib64/ld-linux-x86-64.so.2"
+    }
+    return ["-flavor", "gnu", obj,
+            tc + "/linkview/Scrt1.o",
+            tc + "/linkview/crti.o",
+            tc + "/linkview/crtn.o",
+            tc + "/linkview/libc.so.6",
+            "-dynamic-linker", loader,
+            "-o", exe]
+}
+
+fun run_probe(): Throw<void, FfiError> {
+    val os = Info.os_name()
+    val arch = Info.arch()
+    val tc = toolchain_dir()
+    println("llvm_probe: os={os} arch={arch} tc={tc}")
+
+    // 1) 资产 LLVM 动态库(统一文件名,显式路径加载)
+    val lib = Lib.open(tc + "/lib/llvm.dylib")?
+    Llvm.init_host_target(lib)?
+
+    // 2) main(): i32 → ret 42
+    val ctx = Llvm.create_context(lib)?
+    val module = Llvm.create_module(lib, "probe", ctx)?
+    val i32ty = Llvm.i32_type(lib, ctx)?
+    val fnty = Llvm.function_type0(lib, i32ty, false)?
+    val fun_ref = Llvm.add_function(lib, module, "main", fnty)?
+    val entry = Llvm.append_block(lib, ctx, fun_ref, "entry")?
+    val builder = Llvm.create_builder(lib, ctx)?
+    Llvm.position_builder_at_end(lib, builder, entry)?
+    val c42 = Llvm.const_int(lib, i32ty, 42u64, false)?
+    Llvm.build_ret(lib, builder, c42)?
+    check(Llvm.verify_module(lib, module)?, "module assembled + verified")
+
+    // 3) TargetMachine emit .obj
+    val triple = Llvm.host_triple()
+    val target = Llvm.get_target(lib, triple)?
+    val tm = Llvm.create_target_machine(lib, target, triple, "generic", "", 2u32, 0u32, 0u32)?
+    Llvm.emit_to_file(lib, tm, module, "probe.o", true)?
+    check(true, "probe.o emitted (triple {triple})")
+    lib.close()
+
+    // 4) 资产 lld(+ linkview)链接
+    val exe = if os == "windows" { "probe.exe" } else { "probe" }
+    val linker = Proc.spawn(tc + "/bin/lld", link_args(tc, os, arch, "probe.o", exe))?
+    val lrc = linker.wait()?
+    check(lrc == 0, "lld linked {exe} (exit {lrc})")
+
+    // 5) 跑产物,断言退出码 42
+    val runner = Proc.spawn("./" + exe, [])?
+    val rc = runner.wait()?
+    check(rc == 42, "probe exits 42 (got {rc})")
+
+    Ok(void)
+}
+
+fun main(): void {
+    match run_probe() {
+        Ok(_) => {}
+        Error(e) => check(false, "run_probe should not fail: {e}"),
+    }
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

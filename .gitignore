@@ -11,3 +11,5 @@ out/
 .idea/
 .vscode/
 *.iml
+# 平台原生工具链资产由各平台预置/CI 预取填充(git 不跟踪大二进制)
+functional/llvm_probe/assets/
