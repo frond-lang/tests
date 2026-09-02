@@ -63,11 +63,24 @@ if ! command -v timeout >/dev/null 2>&1; then
 fi
 
 # ── 筛选目标套件（保持目录序）──
+# FROND_SKIP:空格分隔的跳过名单(环境性缺资产,如 musl 无 LLVM 发行物:
+# crypto_primitives llvm_bind llvm_probe)。
+env_skipped=()
+is_env_skipped() {
+    for s in ${FROND_SKIP:-}; do
+        [ "$1" = "$s" ] && return 0
+    done
+    return 1
+}
 selected=()
 skipped=()
 ci_skipped=()
 for dir in ../functional/*/; do
     name="$(basename "$dir")"
+    if is_env_skipped "$name"; then
+        env_skipped+=("$name")
+        continue
+    fi
     if [ -f "$dir/PLATFORMS" ] && ! grep -qw "$host_os" "$dir/PLATFORMS"; then
         skipped+=("$name")
         continue
@@ -153,7 +166,10 @@ for name in "${selected[@]}"; do
 done
 
 echo ""
-echo "functional tests: $pass passed, $fail failed, $known known-baseline-fail, ${#skipped[@]} platform-skip, ${#ci_skipped[@]} ci-skip (JOBS=$JOBS)"
+echo "functional tests: $pass passed, $fail failed, $known known-baseline-fail, ${#skipped[@]} platform-skip, ${#ci_skipped[@]} ci-skip, ${#env_skipped[@]} env-skip (JOBS=$JOBS)"
+if [ ${#env_skipped[@]} -gt 0 ]; then
+    echo "skipped by FROND_SKIP: ${env_skipped[*]}"
+fi
 if [ ${#skipped[@]} -gt 0 ]; then
     echo "skipped on $host_os: ${skipped[*]}"
 fi
