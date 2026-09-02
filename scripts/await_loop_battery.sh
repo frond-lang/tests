@@ -42,5 +42,5 @@ for i in $(seq 1 "$N"); do
         echo "FAIL: await_loop run #$i"
     fi
 done
-echo "await_loop x$N: pass=$pass fail=$fail (FROND_EVENTLOOP=${FROND_EVENTLOOP:-0})"
+echo "await_loop x$N: pass=$pass fail=$fail (FROND_EVENTLOOP=${FROND_EVENTLOOP:-unset})"
 [ $fail -eq 0 ]
