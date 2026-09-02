@@ -39,7 +39,7 @@ trap 'rm -rf "$tmpdir"' EXIT
 # 批量跑 frondc 侧(loadmany),按 "@@FRONDC_SPLIT_9Q7Z@@" 分隔切片。
 # 纯 bash 切分(Windows gawk 文本模式剥 \r 会损坏 CRLF)。
 (cd "$ROOT/Frond/frondc" && timeout 2400 "$FROND" run -- loadmany --std "$STD" "$@" \
-    > "$tmpdir/all.txt" 2>/dev/null)
+    > "$tmpdir/all.txt" 2> "$tmpdir/frondc.err")
 n=0
 fn=""
 while IFS= read -r line; do
@@ -78,4 +78,10 @@ for f in "$@"; do
     fi
 done
 echo "load diff: $pass passed, $fail failed"
+# 崩溃取证:frondc 侧 stderr 落盘,失败时倾倒尾部(此前 2>/dev/null 把
+# panic 吞掉,池路径崩溃无迹可循)。
+if [ -s "$tmpdir/frondc.err" ] && [ "$fail" -ne 0 ]; then
+    echo "---- frondc stderr (tail) ----"
+    tail -40 "$tmpdir/frondc.err"
+fi
 [ "$fail" -eq 0 ]
