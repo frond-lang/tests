@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # await_loop 稳定性电池:N 次连跑,任何一次失败即 FAIL。
-# 引擎调度稳定性门禁(历史上 Multi 模式挂死/抖动的专项哨兵;默认池与
-# FROND_EVENTLOOP=1 两种调度器都跑同一口径)。
+# 引擎调度稳定性门禁(历史上 Multi 模式挂死/抖动的专项哨兵;M3b 起单一
+# 事件循环调度器,同一口径)。
 # 用法: ./await_loop_battery.sh [N]    (默认 30;FROND 指定引擎二进制)
 set -u
 cd "$(dirname "$0")"
@@ -42,5 +42,5 @@ for i in $(seq 1 "$N"); do
         echo "FAIL: await_loop run #$i"
     fi
 done
-echo "await_loop x$N: pass=$pass fail=$fail (FROND_EVENTLOOP=${FROND_EVENTLOOP:-unset})"
+echo "await_loop x$N: pass=$pass fail=$fail"
 [ $fail -eq 0 ]
