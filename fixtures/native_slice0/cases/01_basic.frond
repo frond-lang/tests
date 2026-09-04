@@ -1,0 +1,11 @@
+// EXPECT-EXIT 31
+// 切片 0 基本算术:val/var 局部、优先级、复合赋值路径(重赋值)。
+fun main(): i32 {
+    val a = 6
+    val b = 7
+    var acc = a * b - 2
+    acc = acc / 3 + 8
+    val w = 2
+    acc = acc + w * 5
+    return acc
+}

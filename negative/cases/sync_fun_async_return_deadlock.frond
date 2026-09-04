@@ -1,0 +1,14 @@
+// EXPECT: declares return type 'Async' but its tail evaluates to
+fun runHeavy(): Async<i32> {
+    var sum: i32 = 0
+    var i: i32 = 0
+    while i < 10 {
+        sum = sum + i
+        i = i + 1
+    }
+    sum
+}
+fun main(): void {
+    val r = runHeavy().await()
+    println("r={r}")
+}

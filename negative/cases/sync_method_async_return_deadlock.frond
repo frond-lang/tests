@@ -1,0 +1,11 @@
+// EXPECT: declares return type 'Async' but its tail evaluates to
+type Box = Box(v: i32)
+impl Box {
+    fun go(): Async<i32> {
+        42
+    }
+}
+fun main(): void {
+    val b = Box(1)
+    println("x")
+}

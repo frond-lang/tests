@@ -1,0 +1,14 @@
+// EXPECT-EXIT 147
+// 切片 0 混合:i64 宽算术 + 收窄、var 重赋值链、比较(值流终止但
+// lowering 路径被走过)、一元负、按位非(~)。
+fun main(): i32 {
+    val wide = 1000000i64
+    val m = wide * 3i64
+    val n = (m / 7i64) as i32
+    var k = 5
+    k = k * 2 + 1
+    val t = 1 < 2
+    val neg = -k
+    val bn = ~k
+    return n % 100 + k + neg + bn + 88
+}

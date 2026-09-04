@@ -38,8 +38,9 @@ for f in "$@"; do
     [ -f "$f" ] || continue
     (cd "$ROOT/Frond/frondc" && timeout 900 "$FROND" run -- checkmany --std "$STD" "$f" \
         > "$tmpdir/mir_raw.txt" 2>/dev/null)
-    # checkmany 输出 = 前导行(std 警告等)+ @@FRONDC_SPLIT 行 + dump 体;
-    # 与 diff_load 同款纯 bash 切片。
+    # checkmany 输出 = @@FRONDC_SPLIT 行 + dump 体(sema 诊断走 stderr,
+    # 与 Rust 侧 run_sema_pipeline_or_exit 同款,不进比对);与 diff_load
+    # 同款纯 bash 切片。
     awk '/^@@FRONDC_SPLIT_9Q7Z@/{seen=1; next} seen{print}' "$tmpdir/mir_raw.txt" > "$tmpdir/mir.txt"
     "$FROND" debug --stage sema "$f" > "$tmpdir/eng.txt" 2>/dev/null
     if diff -q "$tmpdir/eng.txt" "$tmpdir/mir.txt" > /dev/null; then

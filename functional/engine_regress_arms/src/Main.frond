@@ -1,0 +1,91 @@
+// engine_regress_arms/Main.frond — 2026-09-04 引擎三连根修的回归验收。
+// ① Select 急切求值臂的陷阱 op 边界(DSop 化曾把 else 臂的 buf[i] 无条件
+//    执行:泛型 get 的界外/空表必须返回 null 而非 panic);
+// ② record 字段就地更新链(值正确性面;set_field 曾漏 drop 旧值,大循环
+//    O(N²) 内存驻留把 diff_ast 全量拖进 OOM);
+// ③ 三臂 else-if 复合(&&)臂条件(same-frame 被调含 Gate 时内层条件曾求值
+//    错落末臂:hex_val('b') 曾返回 43 而非 11);
+// ④ \x/\u{} 转义解码字节(③的下游可见症状:\x1b 曾解码成 0x3B ';')。
+import std.collections.List
+
+type SB = SB(out: str, n: usize)
+
+type MyBox<T> = MyBox(buf: T[], count: usize)
+
+fun g_get<T>(l: List<T>, i: usize): T? { l.get(i) }
+
+fun g_full<T>(l: MyBox<T>, i: usize): T? {
+    if i < l.count { l.buf[i] } else { null }
+}
+
+fun hex_val(ch: u8): i64 {
+    if ch >= (48 as u8) && ch <= (57 as u8) {
+        (ch as i64) - 48
+    } else if ch >= (97 as u8) && ch <= (102 as u8) {
+        (ch as i64) - 87
+    } else {
+        (ch as i64) - 55
+    }
+}
+
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun main(): void {
+    // ① 泛型 List.get 边界(经函数调用的标量化形状)
+    val l = List.empty<i64>()
+    check(l.get(0) == null, "empty list get(0) null")
+    l.push(7)
+    l.push(9)
+    check(g_get(l, 0) == 7, "generic list get in-bounds")
+    check(g_get(l, 5) == null, "generic list get out-of-bounds null")
+    check(l.get(2) == null, "list get at len null")
+
+    val m = MyBox<str>(["a", "b"], 2)
+    check(g_full(m, 1) == "b", "box get in-bounds")
+    check(g_full(m, 2) == null, "box get out-of-bounds null")
+    val empty_box = MyBox<str>([], 0)
+    check(g_full(empty_box, 0) == null, "empty box get null")
+
+    // ② record 字段就地更新链
+    val sb = SB("", 0)
+    var i: i64 = 0
+    while i < 5000 {
+        sb.out = sb.out + "ab"
+        sb.n = sb.n + 1
+        i = i + 1
+    }
+    check(sb.out.len() == 10000, "field accumulate len 10000")
+    check(sb.n == 5000, "field count 5000")
+
+    // ③ 三臂 else-if 复合条件的臂选择
+    check(hex_val(49 as u8) == 1, "hex_val('1') == 1")
+    check(hex_val(98 as u8) == 11, "hex_val('b') == 11")
+    check(hex_val(102 as u8) == 15, "hex_val('f') == 15")
+    check(hex_val(65 as u8) == 10, "hex_val('A') == 10")
+
+    // ④ 转义解码字节
+    val esc = "\x1b"
+    check(esc.len() == 1, "esc len 1")
+    check((esc[0]) as i64 == 27, "esc byte 27")
+    val csi = "\x1b["
+    check((csi[1]) as i64 == 91, "csi second byte 91")
+    val big = "\x41"
+    check((big[0]) as i64 == 65, "x41 byte 65")
+    val uesc = "\u{1b}"
+    check((uesc[0]) as i64 == 27, "u{1b} byte 27")
+
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}

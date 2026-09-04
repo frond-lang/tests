@@ -1,0 +1,13 @@
+// EXPECT-EXIT 25
+// 切片 0 浮点:f64 四则 + 一元负 + as 截断;f32 通道 + f32→i32。
+fun main(): i32 {
+    val a = 2.5
+    val b = a * 4.0
+    val c = b / 4.0 - 0.5
+    val d = 1.0 + c * 3.0
+    val f = 1.5 + 0.5
+    val g = -f + 6.0
+    val e = (d + g) as i32
+    val s = 3.5f32 as i32
+    return e + 11 + s
+}
