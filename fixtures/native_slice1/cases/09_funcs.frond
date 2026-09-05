@@ -1,0 +1,17 @@
+// EXPECT-EXIT 244
+// 切片 1:多函数(原型先行)+ 参数槽 + 递归(fib)+ 调用实参求值 +
+// 函数内 if-void 语句形早 return。fib(12)=144,+100=244。
+fun add(a: i32, b: i32): i32 {
+    return a + b
+}
+
+fun fib(n: i32): i32 {
+    if n < 2 {
+        return n
+    }
+    return fib(n - 1) + fib(n - 2)
+}
+
+fun main(): i32 {
+    return add(fib(12), 100)
+}

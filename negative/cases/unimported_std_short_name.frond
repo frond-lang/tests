@@ -1,4 +1,4 @@
-// EXPECT: undefined variable 'Fmt'
+// EXPECT: module 'Fmt' exists — import it explicitly
 fun main(): void {
     val s = Fmt.dec(42)
     println("{s}")

@@ -1,0 +1,11 @@
+// EXPECT-EXIT 11
+// 切片 1:if 值表达式(结果槽 + merge),嵌套 if-else。
+fun main(): i32 {
+    val a = 7
+    val b = if a > 5 {
+        if a > 6 { 10 } else { 20 }
+    } else {
+        30
+    }
+    return b + 1
+}

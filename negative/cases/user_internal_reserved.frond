@@ -1,4 +1,4 @@
-// EXPECT: reserved for the standard library implementation
+// EXPECT: reserved for builtin modules
 @internal
 fun helper(): i32 { 1 }
 fun main(): void { println("ok") }

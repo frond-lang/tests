@@ -1,9 +1,10 @@
 // std/llvm/Llvm.frond — LLVM C API 的纯 Frond 绑定(经 Lib 动态加载)。
 //
 // v1 形态:句柄一律裸 u64,API 全自由函数(lib 为首参)。
-// 不用 record 封装的原因:record 字段读出的 u64 是软类型值,FFI marshal
-// 的 as_i64 只认硬 tag(display/== 正常、call 收 0)——引擎洞,修复后再
-// 引入 Context/Module 包装。
+// 裸 u64 形态保留原因(历史注记更正 2026-09-04):曾因"record 字段读回
+// 软类型值,FFI marshal 只认硬 tag"禁 record 封装——该洞已被引擎治好
+// (handleprobe 实证:单字段/混合家族/嵌套/List 装载的 record 字段读回
+// 值过 LLVMTypeOf 全绿);裸形态纯属简洁,非性能或正确性约束。
 //
 // 其余约定:
 // - const char* 参数走 cstr 原子(单槽 NUL 结尾);缓冲/出参走 cbuf;
@@ -66,8 +67,9 @@ pub fun read_cstr(lib: Lib, ptr: u64): Throw<str, FfiError> {
 }
 
 // ── target 初始化(重复调用幂等)───────────────────────────────────
-// 注:展开显式符号名而非 for-iter 拼接 —— 迭代器元素参与 str 拼接经
-// lookup 时会被判非 str(疑似引擎软类型洞,已立案),展开写法直白且稳。
+// 注:曾展开显式符号名规避"迭代器元素 str 拼接经 lookup 判非 str"的
+// 疑似洞——已实证不成立(2026-09-04 handleprobe:迭代拼接名过 lookup+
+// call 全绿);保留展开写法仅为直白。
 
 fun init_one(lib: Lib, name: str): Throw<void, FfiError> {
     val f: ForeignFn<void> = lib.lookup(name, "")?

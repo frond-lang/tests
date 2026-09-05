@@ -1,0 +1,12 @@
+// EXPECT-EXIT 31
+// 切片 1:块表达式作用域(副本式)+ 内层遮蔽 + if 值。
+// x=1;y={x=10 → 15};z=if 1<15 → 15;1+15+15=31。
+fun main(): i32 {
+    val x = 1
+    val y = {
+        val x = 10
+        x + 5
+    }
+    val z = if x < y { y } else { x }
+    return x + y + z
+}

@@ -1,4 +1,4 @@
-// EXPECT: undefined variable 'fnv1a'
+// EXPECT: function 'fnv1a' exists in module(s) [std.core.hash.Hash] — import it explicitly
 fun main(): void {
     val h = fnv1a(42)
     println("{h}")

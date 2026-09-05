@@ -1,0 +1,14 @@
+// EXPECT-EXIT 37
+// 切片 1:loop 无限循环 + continue(跳过 3 的倍数)+ break(i>10 先于累加)。
+// 累加 1,2,4,5,7,8,10 = 37。
+fun main(): i32 {
+    var i = 0
+    var acc = 0
+    loop {
+        i = i + 1
+        if i % 3 == 0 { continue }
+        if i > 10 { break }
+        acc = acc + i
+    }
+    return acc
+}

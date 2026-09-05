@@ -1,0 +1,12 @@
+// EXPECT-EXIT 210
+// 切片 1:while 循环(条件块回边),循环内 var 重赋值。1..20 求和 = 210
+// (退出码窗口 ≤255 的可移植上限内)。
+fun main(): i32 {
+    var i = 0
+    var sum = 0
+    while i < 20 {
+        i = i + 1
+        sum = sum + i
+    }
+    return sum
+}
