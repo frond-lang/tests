@@ -1,16 +1,18 @@
-// EXPECT-EXIT 509
+// EXPECT-EXIT 208
 // 切片 0 整型族:进制字面量(0x/0b/0o)、移位、位运算、有符号除/余
 // (截断语义:-100/7=-14,-100%7=-2)、u32 无符号除/余、as 收窄。
+// 退出码必须落在 0..255:Unix wait status 只取低 8 位(509→253),
+// Windows 保留全值——超界值两平台必然分叉。
 fun main(): i32 {
     val hex = 0xFF
     val bin = 0b1010
     val oc = 0o17
     val shifted = hex >> 4
-    val sh = bin << 4
+    val sh = bin << 2
     val negd = -100 / 7
     val negm = -100 % 7
     val bits = hex & 0x0F
-    val x = hex | bin
+    val x = 0x40 | bin
     val ud = 4294967295u32 / 3u32
     val um = ud % 100u32
     val acc = shifted + sh + oc + bits + x + negd + negm
