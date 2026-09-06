@@ -1,0 +1,13 @@
+// EXPECT-EXIT 110
+// 切片 2:宽 record(10 字段)+ 混合标量(i64/i32/bool/char)+ 字段写。
+// (1,2,3,4,5,6,7,8,true,'B');w.f2 = 10:
+//   1+2+10+4+5+6+7+8 = 43;true → 1;'B' = 66;43+1+66 = 110
+type Wide = (f0: i64, f1: i32, f2: i64, f3: i64, f4: i64, f5: i64,
+    f6: i64, f7: i64, f8: bool, f9: char)
+
+fun main(): i32 {
+    val w = Wide(1, 2, 3, 4, 5, 6, 7, 8, true, 'B')
+    w.f2 = 10
+    val sum = w.f0 + w.f1 + w.f2 + w.f3 + w.f4 + w.f5 + w.f6 + w.f7
+    return (sum + (if w.f8 { 1 } else { 0 }) + (w.f9 as i64)) as i32
+}

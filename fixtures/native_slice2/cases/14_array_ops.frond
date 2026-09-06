@@ -1,0 +1,22 @@
+// EXPECT-EXIT 176
+// 切片 2:数组字面量 + fill 循环 + 原地写 + 复合写 + len 迭代。
+// a = [10,20,30](和 60);b = [7,..4] → [7,7,7,7];
+// b[1] = 5;b[2] += 90 → [7,5,97,7](和 116);s = 60 + 116 = 176
+fun main(): i32 {
+    val a = [10, 20, 30]
+    val b = [7 as i64, ..4]
+    b[1] = 5
+    b[2] += 90
+    var s = 0 as i64
+    var i = 0 as usize
+    while i < a.len() {
+        s = s + a[i]
+        i = i + 1
+    }
+    i = 0 as usize
+    while i < b.len() {
+        s = s + b[i]
+        i = i + 1
+    }
+    s as i32
+}

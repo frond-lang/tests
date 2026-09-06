@@ -1,0 +1,20 @@
+// EXPECT-EXIT 112
+// 切片 2:共享语义锚——record 引用语义(var 别名字段写经原变量可见)
+// + translate 链(作参数/返回,原地写字段经共享可见)。
+// a=Point(1,2); b=a(拷指针); b.x=50 → a.x=50;
+// translate(a,5) 原地 p.x=55 返回自身;断言 a.x=55 且 c.x=55(同一块)。
+// 55 + 55 + 2 = 112
+type Point = (x: i64, y: i64)
+
+fun translate(p: Point, dx: i64): Point {
+    p.x = p.x + dx
+    p
+}
+
+fun main(): i32 {
+    val a = Point(1, 2)
+    val b = a
+    b.x = 50
+    val c = translate(a, 5)
+    return (a.x + c.x + c.y) as i32
+}

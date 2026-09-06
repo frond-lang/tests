@@ -1,0 +1,10 @@
+// Local call with more actuals than formals: the == guard skipped argument
+// unification entirely, so no ExprInfo was recorded for the surplus literal
+// and the IR builder crashed with "missing ExprInfo" instead of diagnosing
+// the arity mismatch (Bug #160).
+// EXPECT: function 'two' expects 2 argument(s) but got 3
+fun two(a: i32, b: i32): i32 { a + b }
+
+fun main(): void {
+    println(two(1, 2, 3))
+}

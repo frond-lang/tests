@@ -1,0 +1,24 @@
+// EXPECT-EXIT 87
+// 切片 2:str 字面量 + 相等/不相等(内联字节循环)+ len(UTF-8 字符数)
+// + str 作 record 字段读回。
+//   相等族:+1(n.name==m.name)+2(n.name!="other")+4("héllo"=="héllo")
+//   len:+5("héllo" 5 字符非 6 字节)+5("frond")+2("日本")
+//   id:+7+9 → s = 35;ret = 35 + "frond".len()*10 + 2 = 87
+type Named = (name: str, id: i64)
+
+fun main(): i32 {
+    val n = Named("frond", 7)
+    val m = Named("frond", 9)
+    var s = 0 as i64
+    if n.name == m.name {
+        s = s + 1
+    }
+    if n.name != "other" {
+        s = s + 2
+    }
+    if "héllo" == "héllo" {
+        s = s + 4
+    }
+    s = s + n.id + m.id + "héllo".len() + n.name.len() + "日本".len()
+    (s + m.name.len() * 10 + 2) as i32
+}

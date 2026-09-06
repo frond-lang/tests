@@ -1,0 +1,12 @@
+// EXPECT-EXIT 57
+// 切片 2:record 构造 + 深访问(嵌套 record 字段链)。
+// o.inner.a=3, o.inner.b=4, o.k=10:
+//   deep = 3*4 + 10 = 22;22 + 4*8 + 3 = 57
+type Inner = (a: i64, b: i64)
+type Outer = (inner: Inner, k: i64)
+
+fun main(): i32 {
+    val o = Outer(Inner(3, 4), 10)
+    val deep = o.inner.a * o.inner.b + o.k
+    return (deep + o.inner.b * 8 + o.inner.a) as i32
+}

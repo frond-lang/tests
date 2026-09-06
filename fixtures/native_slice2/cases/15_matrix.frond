@@ -1,0 +1,25 @@
+// EXPECT-EXIT 96
+// 切片 2:record 数组 + Matrix 嵌套(record 内数组 / 数组内 record)+ 深链写。
+// m.rows[1].cells[0] = 30(原地写);m.rows[0].cells[1] = 20;
+// 行和:Row0 = 1+20 = 21;Row1 = 30+4 = 34;total = 55;rows.len() = 2;
+// ret = 55 * 2 - rows.len() * 7 = 110 - 14 = 96
+type Row = (cells: i64[])
+type Matrix = (rows: Row[])
+
+fun main(): i32 {
+    val m = Matrix([Row([1, 2]), Row([3, 4])])
+    m.rows[0].cells[1] = 20
+    m.rows[1].cells[0] = 30
+    var total = 0 as i64
+    var r = 0 as usize
+    while r < m.rows.len() {
+        var c = 0 as usize
+        while c < m.rows[r].cells.len() {
+            total = total + m.rows[r].cells[c]
+            c = c + 1
+        }
+        r = r + 1
+    }
+    // total = 21 + 34 = 55
+    (total * 2 - m.rows.len() as i64 * 7) as i32
+}

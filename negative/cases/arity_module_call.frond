@@ -1,0 +1,10 @@
+// Module-qualified call with fewer actuals than formals: sema must reject it —
+// module calls have no partial-application semantics, and the silent path used
+// to launch the subgraph with missing inputs, garbage-filling the param slots
+// at runtime (the "async bare-call null" family, Bug #160).
+// EXPECT: function 'std.core.types.Str.starts_with' expects 2 argument(s) but got 1
+import std.core.types.Str
+
+fun main(): void {
+    println(Str.starts_with("abc"))
+}

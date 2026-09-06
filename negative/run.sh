@@ -5,8 +5,10 @@ cd "$(dirname "$0")"
 
 FROND="${FROND:-}"
 if [ -z "$FROND" ]; then
-    # Resolve an absolute path before any cd — the per-case runs execute in a temp dir.
-    FROND="$(cd "$(dirname "$0")/../../Frond/core/target/release" && pwd)/frond.exe"
+    # 已 cd 到脚本目录(见上),用纯相对路径解析绝对路径(逐用例在
+    # temp dir 执行,须绝对路径)——$(dirname "$0") 是调用时的相对串,
+    # cd 后再拼会解析到错误位置(从仓库根调用时误判 not found,exit 2)。
+    FROND="$(cd ../../Frond/core/target/release && pwd)/frond.exe"
 fi
 if [ ! -f "$FROND" ]; then
     echo "frond binary not found at $FROND (build first or set FROND env var)" >&2

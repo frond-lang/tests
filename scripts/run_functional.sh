@@ -11,7 +11,10 @@ cd "$(dirname "$0")"
 
 FROND="${FROND:-}"
 if [ -z "$FROND" ]; then
-    FROND="$(cd "$(dirname "$0")/../../Frond/core/target/release" && pwd)/frond.exe"
+    # 已 cd 到脚本目录(见上),用纯相对路径解析——$(dirname "$0") 是
+    # 调用时的相对串,cd 后再拼会解析到错误位置(bash tests/scripts/x.sh
+    # 从仓库根调用时 FROND 误判 not found,exit 2)。
+    FROND="$(cd ../../Frond/core/target/release && pwd)/frond.exe"
 fi
 if [ ! -f "$FROND" ]; then
     echo "frond binary not found at $FROND (build first or set FROND env var)" >&2

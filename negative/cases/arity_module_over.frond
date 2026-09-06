@@ -1,0 +1,9 @@
+// Module-qualified call with more actuals than formals: extra arguments were
+// silently dropped by the min()-truncating unify loop — must be a compile
+// error (Bug #160).
+// EXPECT: function 'std.core.types.Str.starts_with' expects 2 argument(s) but got 3
+import std.core.types.Str
+
+fun main(): void {
+    println(Str.starts_with("abc", "b", "c"))
+}

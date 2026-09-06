@@ -1,0 +1,125 @@
+// 可空 scrutinee 上的构造器模式判别守护:null 必须安静地 fall through
+// (不 panic、不误报),非空值正常命中 ctor 分支。
+//
+// 背景:ctor-match-null 门禁硬化——静态非空 scrutinee 的运行时 null 升级为
+// 硬失败(nonnull_assert 挂接);本套件守护"静态可空"侧永不误伤:
+//   1. 第一层:Tree? scrutinee + Node/Leaf ctor 分支 + null 值;
+//   2. 嵌套层:可空 field(Tree?)上的嵌套 ctor 子模式收到 null;
+//   3. 纯 null/变量模式混合形态;
+//   4. 非空值全部正常命中。
+var failures: i32 = 0
+
+fun check(cond: bool, name: str): void {
+    if cond {
+        println("  PASS: {name}")
+    } else {
+        failures = failures + 1
+        println("  FAIL: {name}")
+    }
+}
+
+fun summary(): void {
+    println("")
+    if failures == 0 {
+        println("RESULT: ALL PASSED")
+    } else {
+        println("RESULT: {failures} FAILED")
+    }
+}
+
+// 左右子树均可空的递归 ADT:ctor 分支的 field 类型是 Tree?
+type Tree =
+    | Leaf(i32)
+    | Node(Tree?, Tree?)
+
+fun max2(a: i32, b: i32): i32 {
+    if a > b { a } else { b }
+}
+
+// 可空参数 + null 分支在前:深度递归里 null 反复流入 ctor 判别
+fun depth(t: Tree?): i32 {
+    match t {
+        null => 0,
+        Node(l, r) => 1 + max2(depth(l), depth(r)),
+        Leaf(_) => 1,
+    }
+}
+
+// 嵌套 ctor 子模式:Node 的子模式是 Leaf(_), scrutinee field 是 Tree? —
+// 左子树为 null 时嵌套 ctor 判别必须安静 fall through
+fun left_is_leaf(t: Tree?): bool {
+    match t {
+        Node(Leaf(_), _) => true,
+        _ => false,
+    }
+}
+
+// 非空 scrutinee(局部 val 构造后必非空)的常规判别
+fun label(t: Tree): str {
+    match t {
+        Node(_, _) => "node",
+        Leaf(v) => "leaf{v}",
+    }
+}
+
+fun main(): void {
+    println("=== Pattern Nullable Gate ===")
+
+    println("--- null fall-through (layer 1) ---")
+    val empty: Tree? = null
+    check(depth(empty) == 0, "depth(null) == 0")
+    check(left_is_leaf(empty) == false, "nested ctor on null falls through")
+    check(label_of_nullable(empty) == "none", "null arm before ctor arm")
+
+    println("--- non-null ctor hits ---")
+    val leaf: Tree? = Leaf(7)
+    check(depth(leaf) == 1, "depth(Leaf) == 1")
+    check(label(Leaf(7)) == "leaf7", "non-null single ctor")
+
+    val two: Tree? = Node(Leaf(1), Leaf(2))
+    check(depth(two) == 2, "depth(Node(Leaf,Leaf)) == 2")
+
+    val lopsided: Tree? = Node(null, Leaf(3))
+    check(depth(lopsided) == 2, "depth(Node(null,Leaf)) == 2")
+
+    val deep: Tree? = Node(Node(null, null), null)
+    check(depth(deep) == 2, "nested nulls both sides")
+
+    println("--- nested ctor sub-pattern (layer 2) ---")
+    check(left_is_leaf(Node(Leaf(1), null)) == true, "left is Leaf")
+    check(left_is_leaf(Node(null, Leaf(1))) == false, "left is null")
+    check(left_is_leaf(Node(Node(null, null), null)) == false, "left is Node")
+
+    println("--- plain null / variable mix ---")
+    val s: str? = null
+    check(describe_str(s) == "none", "str? null arm")
+    check(describe_str("hi") == "some:hi", "str? variable arm")
+    val n: i32? = null
+    check(describe_i32(n) == "none", "i32? null arm")
+    check(describe_i32(42) == "some:42", "i32? variable arm")
+
+    summary()
+}
+
+// null 分支在前 + ctor 分支在后的混合(局部函数形态)
+fun label_of_nullable(t: Tree?): str {
+    match t {
+        null => "none",
+        Node(_, _) => "node",
+        Leaf(_) => "leaf",
+    }
+}
+
+fun describe_str(s: str?): str {
+    match s {
+        null => "none",
+        v => "some:{v}",
+    }
+}
+
+fun describe_i32(n: i32?): str {
+    match n {
+        null => "none",
+        v => "some:{v}",
+    }
+}
