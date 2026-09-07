@@ -1,0 +1,49 @@
+// EXPECT-EXIT 81
+// 切片 3:深度组合——递归 ADT(Cons/Nil)、record 字段装 ADT、
+// PRecord 模式(按名 + 按位)、ADT 传参递归求值、match 返回 str。
+// lst sum=6 len=3;h.box=Some(7)→7;PRecord {x,y}=7;按位 3*4=12;
+// recmatch="ok" len=2;6+3+7+7+12+2+44 = 81。
+type Lst = | Nil | Cons(i64, Lst)
+type Opt = | None | Some(i64)
+type Holder = Holder(box: Opt)
+type Pt = (x: i64, y: i64)
+
+fun sum(l: Lst): i64 {
+    match l {
+        Nil => 0
+        Cons(h, t) => h + sum(t)
+    }
+}
+
+fun len(l: Lst): i64 {
+    match l {
+        Nil => 0
+        Cons(_, t) => 1 + len(t)
+    }
+}
+
+fun main(): i32 {
+    val l = Cons(1, Cons(2, Cons(3, Nil)))
+    val s = sum(l)
+    val n = len(l)
+    val h = Holder(Some(7))
+    val b = match h.box {
+        Some(v) => v
+        None => 0
+    }
+    // PRecord 按名 + 按位(record 构造器构造;RecordLitE 切片 5)。
+    val pt = Pt(3, 4)
+    val pr = match pt {
+        (x: xx, y: yy) => xx + yy
+        _ => 0
+    }
+    val pos = match pt {
+        (a, b) => a * b
+        _ => 1
+    }
+    val recmatch = match l {
+        Nil => "no"
+        Cons(_, _) => "ok"
+    }
+    (s + n + b + pr + pos + recmatch.len() + 44) as i32
+}

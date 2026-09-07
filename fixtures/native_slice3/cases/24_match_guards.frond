@@ -1,0 +1,46 @@
+// EXPECT-EXIT 102
+// 切片 3:match 全模式族——Marm.guard(守卫)、嵌套 ctor 模式、
+// 字面量模式(标量/str)、nullable match(null 模式 + PVar 绑定窄化)。
+// r1(d1=5)=6 r2(d2=50)=50 r3(d3=null)=10;嵌套 O(Inner(7))=7;
+// lit(2)=2;strlit("ab")=2;合计 6+50+10+7+2+2+25=102。
+type Inner = Inner(x: i64)
+type Outer = | O(Inner) | Empty
+
+fun main(): i32 {
+    // nullable match:null 模式 + 绑定窄化(guard + 无 guard)。
+    val d1: i64? = 5
+    val d2: i64? = 50
+    val d3: i64? = null
+    val r1 = match d1 {
+        null => 10
+        n => n + 1
+    }
+    val r2 = match d2 {
+        n if n > 10 => n
+        _ => 0
+    }
+    val r3 = match d3 {
+        null => 10
+        n => n + 1
+    }
+    // 嵌套 ctor 模式 + 单 ctor record 模式。
+    val o = O(Inner(7))
+    val nested = match o {
+        O(Inner(x)) => x
+        Empty => 0
+    }
+    // 字面量模式(标量)。
+    val lit = match 2 {
+        1 => 1
+        2 => 2
+        3 => 3
+        _ => 9
+    }
+    // 字面量模式(str)。
+    val strlit = match "ab" {
+        "aa" => 1
+        "ab" => 2
+        _ => 3
+    }
+    (r1 + r2 + r3 + nested + lit + strlit + 25) as i32
+}

@@ -1,0 +1,34 @@
+// EXPECT-EXIT 44
+// 切片 3:带字段 ctor——per-ctor struct {tag, fields...} 构造 +
+// match 字段绑定(位置模式)+ 嵌套调用。
+// area:Circle(2)=12 Rect(3,4)=12 Tri(2,3,4)=4;fieldsum:
+// Rect(3,4)=9 Circle(6)=7;合计 12+12+4+9+7=44。
+type Shape =
+    | Circle(i64)
+    | Rect(i64, i64)
+    | Tri(i64, i64, i64)
+
+fun area(s: Shape): i64 {
+    match s {
+        Circle(r) => 3 * r * r
+        Rect(w, h) => w * h
+        Tri(a, b, c) => (a + b + c) / 2
+    }
+}
+
+fun fieldsum(s: Shape): i64 {
+    match s {
+        Circle(r) => r + 1
+        Rect(w, h) => w + h + 2
+        Tri(a, b, c) => a + b + c + 3
+    }
+}
+
+fun main(): i32 {
+    val a1 = area(Circle(2))
+    val a2 = area(Rect(3, 4))
+    val a3 = area(Tri(2, 3, 4))
+    val f = fieldsum(Rect(3, 4))
+    val g = fieldsum(Circle(6))
+    (a1 + a2 + a3 + f + g) as i32
+}

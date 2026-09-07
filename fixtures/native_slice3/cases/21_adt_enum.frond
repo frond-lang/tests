@@ -1,0 +1,30 @@
+// EXPECT-EXIT 31
+// 切片 3:多 ctor 枚举(无字段)——构造 + match tag 分派 + 嵌套传参 +
+// or-pattern(Red|Green)与通配 _。
+type Color = | Red | Green | Blue
+
+fun score(c: Color): i64 {
+    match c {
+        Red => 10
+        Green => 20
+        Blue => 30
+    }
+}
+
+fun pick(a: Color, b: Color): i64 {
+    score(a) + score(b)
+}
+
+fun main(): i32 {
+    val total = score(Red) + score(Green) + score(Blue)
+    val pair = pick(Green, Blue)
+    val c3: Color = Blue
+    // or-pattern:Red|Green 合并臂;Blue 单臂;_ 通配兜底臂(死路,验证编译)。
+    val extra = match c3 {
+        Red | Green => 1
+        Blue => 30
+        _ => 0
+    }
+    val wild = match Red { _ => 9 }
+    (total - pair + extra - 30 + wild + 12) as i32
+}

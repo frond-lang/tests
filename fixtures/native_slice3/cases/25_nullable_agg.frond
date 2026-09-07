@@ -1,0 +1,33 @@
+// EXPECT-EXIT 155
+// 切片 3:nullable × 聚合互嵌——record 字段 T?、T? 装聚合(record/str)、
+// 数组元素 T?(读写 null)、函数返回 T?(conv box)、nullable 上的
+// ctor 模式(先判非空再解 inner record)。
+// r1=2 r2=99 r3=5 r4=1 r5=0 f=7;2+99+5+1+0+7+41=155。
+type P = P(name: str?, age: i64?)
+type Pair = Pair(a: i64, b: i64)
+
+fun first(a: i32[]): i64? {
+    if a.len() == 0 {
+        null
+    } else {
+        a[0] as i64
+    }
+}
+
+fun main(): i32 {
+    val p = P("ab", null)
+    val r1 = ((p.name ?? "zz").len() as i64)
+    val r2 = p.age ?? 99
+    val boxr: Pair? = Pair(2, 3)
+    val r3 = match boxr {
+        Pair(a, b) => a + b
+        null => 0
+    }
+    val strbox: str? = null
+    val r4 = ((strbox ?? "z").len() as i64)
+    val arr: i32?[] = [1, 2]
+    arr[1] = null
+    val r5 = (arr[1] ?? 0) as i64
+    val f = first([7, 8]) ?? 0
+    (r1 + r2 + r3 + r4 + r5 + f + 41) as i32
+}
