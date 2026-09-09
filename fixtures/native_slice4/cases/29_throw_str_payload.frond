@@ -1,0 +1,36 @@
+// EXPECT-EXIT 37
+// 切片 4:Throw 聚合载荷(E = str,ptr 形态)+ record V 载荷 + 嵌套消费。
+// name(2)=Ok("bob") len 3;name(9) throw "nine" len 4;rec V 字段读 x+y=30。
+// 3+4+30=37。
+type P = P(x: i64, y: i64)
+
+fun named(n: i64): Throw<str, str> {
+    if n == 9 {
+        throw "nine"
+    }
+    if n == 2 {
+        return Ok("bob")
+    }
+    Ok("ann")
+}
+
+fun packed(): Throw<P, str> {
+    Ok(P(12, 18))
+}
+
+fun main(): i32 {
+    var acc: i64 = 0
+    match named(2) {
+        Error(m) => { acc = acc + m.len() as i64 }
+        Ok(v) => { acc = acc + v.len() as i64 }
+    }
+    match named(9) {
+        Error(m) => { acc = acc + m.len() as i64 }
+        Ok(v) => { acc = acc - v.len() as i64 }
+    }
+    match packed() {
+        Error(m) => { acc = acc - m.len() as i64 }
+        Ok(p) => { acc = acc + p.x + p.y }
+    }
+    acc as i32
+}

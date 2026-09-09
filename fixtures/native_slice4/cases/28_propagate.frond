@@ -1,0 +1,29 @@
+// EXPECT-EXIT 77
+// 切片 4:`?` 传播——Ok 解包直通、Err 早退回传 Throw。
+// half(84)?=42;outer: 42+1=43 → Ok(43);main match → 43。
+// 失败链:half(-8) throw → outer 内 ? 早退 → Error(8) → main 计 8+26=34。
+// 43+34=77。
+fun half(n: i64): Throw<i64, i64> {
+    if n < 0 {
+        throw 0 - n
+    }
+    Ok(n / 2)
+}
+
+fun outer(n: i64): Throw<i64, i64> {
+    val h = half(n)?
+    Ok(h + 1)
+}
+
+fun main(): i32 {
+    var acc: i64 = 0
+    match outer(84) {
+        Error(e) => { acc = acc - e }
+        Ok(v) => { acc = acc + v }
+    }
+    match outer(-8) {
+        Error(e) => { acc = acc + e + 26 }
+        Ok(v) => { acc = acc - v }
+    }
+    acc as i32
+}

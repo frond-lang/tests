@@ -1,0 +1,24 @@
+// EXPECT-EXIT 25
+// 切片 4:async 直通降级——async fun lower 为普通函数,.await(e)=e 恒等。
+// dbl(5).await()=11;add3(1,2,3).await()=6;chained(x)=x*3;串 await 链。
+// 11+6+8=25。
+async fun dbl(n: i64): Async<i64> {
+    n * 2 + 1
+}
+
+async fun add3(a: i64, b: i64, c: i64): Async<i64> {
+    a + b + c
+}
+
+async fun chained(n: i64): Async<i64> {
+    val d = dbl(n).await()
+    val t = add3(d, 2, 1).await()
+    t
+}
+
+fun main(): i32 {
+    val a = dbl(5).await()
+    val b = add3(1, 2, 3).await()
+    val c = chained(2).await()
+    (a + b + c) as i32
+}

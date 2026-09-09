@@ -1,0 +1,13 @@
+// EXPECT-EXIT 79
+// 切片 5:str 索引(码点语义,镜像引擎)——ASCII 单字节 + 多字节
+// UTF-8 解码(é=233,中=20013)。
+// 'B'=66 + é=233 + 中=20013 − 20233 = 79。
+fun main(): i32 {
+    val s = "ABCD"
+    val b = s[1]
+    val t = "aéb"
+    val e = t[1]
+    val u = "中x"
+    val zh = u[0]
+    (b as i64 + e as i64 + zh as i64 - 20233) as i32
+}

@@ -1,0 +1,20 @@
+// EXPECT-EXIT 58
+// 切片 5:defer(函数级链,直线形态)——注册序执行,函数出口统一触发
+// (return/throw/尾表达式路径全挂)。副作用经数组盒传递(引用语义)。
+// box=1+7+100=108;base=10;108+10-60=58。
+fun note(box: i64[], v: i64): void {
+    box[0] = box[0] + v
+}
+
+fun work(box: i64[]): i64 {
+    defer note(box, 100)
+    defer note(box, 7)
+    note(box, 1)
+    10
+}
+
+fun main(): i32 {
+    val box: i64[] = [0]
+    val base = work(box)
+    (base + box[0] - 60) as i32
+}

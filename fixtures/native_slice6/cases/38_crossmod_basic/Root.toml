@@ -1,0 +1,3 @@
+[package]
+name = "crossmod_basic"
+entry = "src/Main.frond"

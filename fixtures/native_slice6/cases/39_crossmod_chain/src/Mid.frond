@@ -1,0 +1,11 @@
+import Base.{unit}
+
+pub fun decade(): i64 {
+    var acc: i64 = 0
+    var i: i64 = 0
+    while i < 10 {
+        acc = acc + unit()
+        i = i + 1
+    }
+    acc
+}

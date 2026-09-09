@@ -1,0 +1,20 @@
+pub type Pt = Pt(pub x: i64, pub y: i64)
+pub type Shape = | Circle(Pt, i64) | Rect(Pt, Pt)
+
+pub fun area(s: Shape): i64 {
+    match s {
+        Circle(c0, r) => 3 * r * r
+        Rect(a, b) => {
+            val w = if a.x > b.x { a.x - b.x } else { b.x - a.x }
+            val h = if a.y > b.y { a.y - b.y } else { b.y - a.y }
+            w * h
+        }
+    }
+}
+
+pub fun safe_div(a: i64, b: i64): Throw<i64, str> {
+    if b == 0 {
+        throw "div by zero"
+    }
+    Ok(a / b)
+}

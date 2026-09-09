@@ -1,0 +1,23 @@
+// EXPECT-EXIT 19
+// 切片 4:async × Throw 组合(镜像 frondc 自身形态 Async<Throw<V,E>>):
+// await 恒等后 Throw 直落;fetch(4)=Ok("good") len4;fetch(7) throw 7;
+// 4+7+8=19。
+async fun fetch(n: i64): Async<Throw<str, i64>> {
+    if n == 7 {
+        throw 7
+    }
+    Ok("good")
+}
+
+fun main(): i32 {
+    var acc: i64 = 0
+    match fetch(4).await() {
+        Error(e) => { acc = acc - e }
+        Ok(v) => { acc = acc + v.len() as i64 }
+    }
+    match fetch(7).await() {
+        Error(e) => { acc = acc + e }
+        Ok(v) => { acc = acc - v.len() as i64 }
+    }
+    (acc + 8) as i32
+}

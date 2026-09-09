@@ -1,0 +1,25 @@
+// EXPECT-EXIT 52
+// 切片 5:[a..b] 切片——str 按码点、数组按元素;含闭区间 [a..=b]。
+// m="bcd" len3;d=[2,3] sum5;incl=[2,3,4] sum9;空串 len0;
+// 3+5+9+35(基线)=52。
+fun main(): i32 {
+    val u = "abcdef"
+    val m = u[1..4]
+    val c = [1, 2, 3, 4, 5]
+    val d = c[1..3]
+    val incl = c[1..=3]
+    var sum: i64 = 0
+    var i: usize = 0
+    while i < d.len() {
+        sum = sum + d[i]
+        i = i + 1
+    }
+    var s2: i64 = 0
+    i = 0
+    while i < incl.len() {
+        s2 = s2 + incl[i]
+        i = i + 1
+    }
+    val empty = ""[0..0]
+    (m.len() as i64 + sum + s2 + empty.len() as i64 + 35) as i32
+}

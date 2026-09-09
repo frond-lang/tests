@@ -1,0 +1,23 @@
+// EXPECT-EXIT 46
+// 切片 4:Throw 直落——显式 Ok 构造 + throw 早退 + match Error/Ok 消费。
+// risky(20)=Ok(40)→v+1=41;risky(-5) throw 5 → Error 臂 e 计 5;
+// 41+5=46。
+fun risky(n: i64): Throw<i64, i64> {
+    if n < 0 {
+        throw 0 - n
+    }
+    Ok(n * 2)
+}
+
+fun main(): i32 {
+    var acc: i64 = 0
+    match risky(20) {
+        Error(e) => { acc = acc - e }
+        Ok(v) => { acc = acc + v + 1 }
+    }
+    match risky(-5) {
+        Error(e) => { acc = acc + e }
+        Ok(v) => { acc = acc - v }
+    }
+    acc as i32
+}

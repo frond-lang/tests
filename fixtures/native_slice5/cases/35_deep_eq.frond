@@ -1,0 +1,30 @@
+// EXPECT-EXIT 54
+// 切片 5:深相等——数组逐元素 + record 逐字段(引擎内容相等语义,
+// 非引用相等)。
+// arr_eq=true arr_neq=false rec_eq=true rec_neq=false inner=true diff=false
+// → 1+0+2+0+4+8-... 计:1*1+0*2+1*4+0*8+1*16+0*23+32-2=… 直接位权:
+//
+type P = P(x: i64, y: i64)
+
+fun main(): i32 {
+    val r1 = [1, 2, 3]
+    val r2 = [1, 2, 3]
+    val r3 = [1, 2, 4]
+    val p1 = P(3, 4)
+    val p2 = P(3, 4)
+    val p3 = P(3, 5)
+    val arr_eq = r1 == r2
+    val arr_neq = r1 != r3
+    val rec_eq = p1 == p2
+    val rec_neq = p1 != p3
+    val inner = [p1.x, p1.y] == [3, 4]
+    val diff = r1 == r3
+    var acc: i64 = 0
+    if arr_eq { acc = acc + 1 }
+    if arr_neq { acc = acc + 2 }
+    if rec_eq { acc = acc + 4 }
+    if rec_neq { acc = acc + 8 }
+    if inner { acc = acc + 16 }
+    if diff { acc = acc - 100 }
+    (acc + 23) as i32
+}

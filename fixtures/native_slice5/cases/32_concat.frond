@@ -1,0 +1,24 @@
+// EXPECT-EXIT 41
+// 切片 5:动态拼接——str +(字节块并置)+ 数组 ++(元素块并置)。
+// w="xyzw" len4;a++b=[1..5] len5 sum15;e=[9,9] ++ [1] len3 sum19;
+// 4+15+19+3(基线)=41。
+fun main(): i32 {
+    val w = "xy" + "zw"
+    val a = [1, 2, 3]
+    val b = [4, 5]
+    val c = a ++ b
+    val e = [9, 9] ++ [1]
+    var sum: i64 = 0
+    var i: usize = 0
+    while i < c.len() {
+        sum = sum + c[i]
+        i = i + 1
+    }
+    var sum2: i64 = 0
+    i = 0
+    while i < e.len() {
+        sum2 = sum2 + e[i]
+        i = i + 1
+    }
+    (w.len() as i64 + sum + sum2 + 3) as i32
+}

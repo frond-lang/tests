@@ -1,0 +1,3 @@
+[package]
+name = "crossmod_deep"
+entry = "src/Main.frond"

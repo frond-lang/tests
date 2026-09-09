@@ -1,0 +1,1 @@
+F:\Projects\Rust\frond-lang\tests\fixtures\native_slice6\cases\38_crossmod_basic/src/Main.frond:16:9: warning: unreachable match arm

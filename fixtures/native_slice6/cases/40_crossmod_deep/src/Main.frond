@@ -1,0 +1,24 @@
+// EXPECT-EXIT 113
+// 切片 6a:深组合——跨模块 ADT 带字段 ctor 嵌套模式 + 深相等 +
+// 跨模块 Throw。27+48+36+16-14=113。
+import Geo.{Pt, Shape, Circle, Rect, area, safe_div}
+
+fun main(): i32 {
+    val c = Circle(Pt(1, 2), 3)
+    val r = Rect(Pt(0, 0), Pt(6, 8))
+    val a1 = area(c)
+    val a2 = area(r)
+    val same = Circle(Pt(1, 2), 3) == c
+    var t: i64 = 0
+    match safe_div(84, 2) {
+        Error(m) => { t = t - m.len() as i64 }
+        Ok(v) => { t = t + v }
+    }
+    match safe_div(1, 0) {
+        Error(m) => { t = t + m.len() as i64 }
+        Ok(v) => { t = t - v }
+    }
+    var acc: i64 = a1 + a2 + t
+    if same { acc = acc + 16 }
+    acc as i32
+}

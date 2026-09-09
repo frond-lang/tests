@@ -1,0 +1,11 @@
+// EXPECT-EXIT 64
+// 切片 6a:三模块链 Main→Mid→Base——依赖模块内再跨模块调用
+// (decade 内裸调 Base.unit)。40+23+1=64。
+import Mid.{decade}
+import Base.{unit}
+
+fun main(): i32 {
+    val t = decade() * 4
+    val u = unit() + 22
+    (t + u) as i32
+}

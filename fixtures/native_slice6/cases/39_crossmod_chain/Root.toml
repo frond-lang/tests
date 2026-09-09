@@ -1,0 +1,3 @@
+[package]
+name = "crossmod_chain"
+entry = "src/Main.frond"
