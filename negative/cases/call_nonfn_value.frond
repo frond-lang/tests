@@ -1,0 +1,9 @@
+// Calling a non-function value: sema's generic fallback only constrained
+// the callee toward a fresh Fn and stayed silent on concrete mismatches,
+// so this compiled and panicked at runtime ("input is not callable").
+// Hard error now (both stages, engine + mirror).
+// EXPECT: cannot call non-function value of type 'i32[3]'
+fun main(): void {
+    val arr = [1, 2, 3]
+    println(arr(1))
+}

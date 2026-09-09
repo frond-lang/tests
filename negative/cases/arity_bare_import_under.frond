@@ -1,0 +1,12 @@
+// Selective-import bare call with fewer actuals than formals (Bug #160 rev.2):
+// the bare path used to silently type under-arity as a "default currying"
+// partial application that no layer implemented — cross-module bare calls
+// produced a Partial value in expression position and died in match
+// scrutinees (the "async bare-call null" family). Hard error now, same as
+// the module-qualified form.
+// EXPECT: function 'starts_with' expects 2 argument(s) but got 1
+import std.core.types.Str.{starts_with}
+
+fun main(): void {
+    println(starts_with("abc"))
+}

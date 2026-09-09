@@ -1,0 +1,11 @@
+// Local call with fewer actuals than formals (Bug #160 rev.2): under-arity
+// was typed as a partial application Fn(remaining) -> ret, but IR never
+// implemented partials — direct consumption eager-calls with garbage-filled
+// slots, storing then calling the "partial" panics ("input is not
+// callable"). Hard error now.
+// EXPECT: function 'five' expects 5 argument(s) but got 4
+fun five(a: i32, b: i32, c: i32, d: i32, e: i32): i32 { a }
+
+fun main(): void {
+    println(five(1, 2, 3, 4))
+}
