@@ -1,6 +1,6 @@
-// EXPECT-EXIT 64
+// EXPECT-EXIT 63
 // 切片 6a:三模块链 Main→Mid→Base——依赖模块内再跨模块调用
-// (decade 内裸调 Base.unit)。40+23+1=64。
+// (decade 内裸调 Base.unit)。40+23=63。
 import Mid.{decade}
 import Base.{unit}
 

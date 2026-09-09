@@ -1,4 +1,4 @@
-// EXPECT-EXIT 113
+// EXPECT-EXIT 144
 // 切片 6a:深组合——跨模块 ADT 带字段 ctor 嵌套模式 + 深相等 +
 // 跨模块 Throw。27+48+36+16-14=113。
 import Geo.{Pt, Shape, Circle, Rect, area, safe_div}
