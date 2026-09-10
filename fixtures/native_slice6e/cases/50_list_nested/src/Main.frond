@@ -1,0 +1,17 @@
+// EXPECT-EXIT 3
+// 切片 6e:嵌套实例化 List<List<i32>>(实参归一 TGeneric→TAdt)。
+import std.collections.List
+
+fun main(): i32 {
+    val xss = List.empty<List<i32>>()
+    val ys = List.empty<i32>()
+    ys.push(1)
+    ys.push(2)
+    xss.push(ys)
+    val zs = List.empty<i32>()
+    zs.push(3)
+    xss.push(zs)
+    val inner = xss.get(1) ?? ys
+    val m = inner.get(0) ?? 0
+    m
+}

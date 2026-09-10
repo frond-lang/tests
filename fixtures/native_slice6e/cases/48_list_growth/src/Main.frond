@@ -1,0 +1,20 @@
+// EXPECT-EXIT 58
+// 切片 6e:增长路径(跨容量翻倍,动态 fill 计数)+ from/get/set/pop
+// (T? 返回族)全方法面。
+// 增长路径(跨容量翻倍)+ get/set/pop + from
+import std.collections.List
+
+fun main(): i32 {
+    val xs = List.from([9, 8])
+    var i = 2
+    while i < 10 {
+        xs.push(i)
+        i = i + 1
+    }
+    val a = xs.get(0) ?? 0
+    val b = xs.get(9) ?? 0
+    xs.set(9, 20)
+    val c = xs.get(9) ?? 0
+    val p = xs.pop() ?? 0
+    (a + b + c + p) as i32
+}

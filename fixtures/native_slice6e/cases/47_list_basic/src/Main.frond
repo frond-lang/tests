@@ -1,0 +1,12 @@
+// EXPECT-EXIT 2
+// 切片 6e:std 泛型进收集面——List.empty<i32>() 命名空间实例分派 +
+// push/len 方法实例(this 绑定重放)+ 泛型构造器实参反推。
+import std.collections.List
+
+fun main(): i32 {
+    val xs = List.empty<i32>()
+    xs.push(1)
+    xs.push(2)
+    xs.push(3)
+    (xs.len() - 1) as i32
+}

@@ -1,0 +1,17 @@
+// EXPECT-EXIT 6
+// 切片 6f:keys()/values()(零参工厂的使用驱动绑定:List.empty() 的
+// T 经 out.push 实参闭包)+ remove 后迭代一致性。
+import std.collections.Map
+
+fun main(): i32 {
+    val m = Map.empty<str, i64>()
+    m.set("a", 1)
+    m.set("b", 2)
+    m.set("c", 3)
+    m.set("d", 4)
+    m.remove("c")
+    val n = m.len() as i32
+    val ks = m.keys()
+    val has_c = if m.has("c") { 10 } else { 0 }
+    (n + ks.len() as i32 + has_c) as i32
+}

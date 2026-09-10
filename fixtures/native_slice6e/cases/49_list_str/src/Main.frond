@@ -1,0 +1,13 @@
+// EXPECT-EXIT 3
+// 切片 6e:List<str>(聚合元素:concat 增长分支 + str 相等)。
+import std.collections.List
+
+fun main(): i32 {
+    val ws = List.empty<str>()
+    ws.push("frond")
+    ws.push("-")
+    ws.push("lang")
+    val joined = ws.get(0) ?? ""
+    val n = if joined == "frond" { 3 } else { 0 }
+    n
+}

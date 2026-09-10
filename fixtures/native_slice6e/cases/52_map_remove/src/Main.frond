@@ -1,0 +1,13 @@
+// EXPECT-EXIT 2
+// 切片 6e:Map remove(桶行重建 ++ 链)。keys()/values() 留洞
+// (泛型体内 List.empty() 的 HM 回流绑定 = 后续切片)。
+import std.collections.Map
+
+fun main(): i32 {
+    val m = Map.empty<str, i64>()
+    m.set("a", 1)
+    m.set("b", 2)
+    m.set("c", 3)
+    m.remove("c")
+    m.len() as i32
+}

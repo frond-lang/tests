@@ -1,0 +1,16 @@
+// EXPECT-EXIT 16
+// 切片 6e:Map<str,i64>——MapEntry 双参构造 + hash_of str 快路
+// (__hash_key_str rt)+ set 覆写。
+import std.collections.Map
+
+fun main(): i32 {
+    val m = Map.empty<str, i64>()
+    m.set("alpha", 3)
+    m.set("beta", 5)
+    m.set("gamma", 8)
+    val a = m.get("beta") ?? 0
+    val b = if m.has("alpha") { 1 } else { 0 }
+    m.set("beta", 10)
+    val c = m.get("beta") ?? 0
+    (a + b + c) as i32
+}

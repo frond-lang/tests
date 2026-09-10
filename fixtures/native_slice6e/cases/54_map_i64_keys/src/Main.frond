@@ -1,0 +1,16 @@
+// EXPECT-EXIT 10
+// 切片 6f:i64 键(非 str 哈希路径:{"{k}"} itoa 插值 + normalize_zero
+// + bytes + fnv1a)+ values()。
+import std.collections.Map
+
+fun main(): i32 {
+    val m = Map.empty<i64, str>()
+    m.set(10, "ten")
+    m.set(20, "twenty")
+    m.set(30, "thirty")
+    val vs = m.values()
+    val n = vs.len() as i32
+    val t = m.get(20) ?? ""
+    val score = if t == "twenty" { 7 } else { 0 }
+    (n + score) as i32
+}
