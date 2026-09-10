@@ -1,0 +1,13 @@
+// EXPECT-EXIT 7
+// 切片 6b:嵌套实例化——泛型调泛型(both → wrap;sum_len → both),
+// 跨模块;T[] 数组形参多实例(i64 与 str)。
+// 1+2+2+2=7(T[] 元素是数组本身:wrap 产单元素数组)。
+import Box.{wrap, both, sum_len}
+
+fun main(): i32 {
+    val w = wrap(7)
+    val n1 = sum_len([1, 2], [3, 4])
+    val n2 = sum_len(["a"], ["b", "c"])
+    val b = both(10, 20)
+    (w.len() as i64 + n1 + n2 + b.len() as i64) as i32
+}

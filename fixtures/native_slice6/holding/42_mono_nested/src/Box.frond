@@ -1,0 +1,11 @@
+pub fun wrap<T>(v: T): T[] {
+    [v]
+}
+
+pub fun both<T>(a: T, b: T): T[] {
+    wrap(a) ++ wrap(b)
+}
+
+pub fun sum_len<T>(a: T[], b: T[]): i64 {
+    both(a, b).len() as i64
+}

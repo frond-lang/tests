@@ -1,0 +1,11 @@
+pub fun idt<T>(v: T): T {
+    v
+}
+
+pub fun pick<T>(c: bool, a: T, b: T): T {
+    if c { a } else { b }
+}
+
+pub fun ksize<T>(v: T[], n: i64): i64 {
+    v.len() as i64 + n
+}
