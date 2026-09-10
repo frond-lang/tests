@@ -1,0 +1,9 @@
+// EXPECT-EXIT 40
+// 切片 6d(一):rt-as-IR——@extern("C") 直调 + C ABI 编组(str →
+// data+len 双参)+ rt 写原语(kernel32 WriteFile / POSIX write)。
+// 输出两行到 stdout(管道/重定向精确;rc 0+0 + 40)。
+fun main(): i32 {
+    val rc1 = __stdout_write_raw("hello rt\n")
+    val rc2 = __stdout_write_raw("second line\n")
+    (rc1 + rc2 + 40) as i32
+}

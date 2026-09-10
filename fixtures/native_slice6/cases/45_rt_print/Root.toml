@@ -1,0 +1,3 @@
+[package]
+name = "rt_print"
+entry = "src/Main.frond"

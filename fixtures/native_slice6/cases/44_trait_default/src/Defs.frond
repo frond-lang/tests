@@ -1,0 +1,21 @@
+trait Labeled {
+    fun label(): str {
+        "item:" + name()
+    }
+
+    fun name(): str {
+        "?"
+    }
+}
+
+pub type Box = Box(pub v: i64) {
+    pub override fun name(): str {
+        "box"
+    }
+}
+
+pub type Tag: (Labeled) = Tag(pub k: str) {
+    pub override fun name(): str {
+        "tag-" + k
+    }
+}

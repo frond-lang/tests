@@ -1,0 +1,3 @@
+[package]
+name = "println_e2e"
+entry = "src/Main.frond"

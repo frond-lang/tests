@@ -1,0 +1,10 @@
+// EXPECT-EXIT 41
+// 切片 6d(二):println 全链——泛型实例化(6b)+ repr intrinsic
+// (str 恒等 / i64 itoa)+ 跨模块 builtin 收集(6a)+ Throw 直落
+// (切片 4)+ @extern rt 写原语(6d 一)。三行输出:str/int/negative。
+fun main(): i32 {
+    println("hello native println")
+    println(42)
+    println(-12345)
+    41
+}

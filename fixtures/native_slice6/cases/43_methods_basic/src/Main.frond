@@ -1,0 +1,18 @@
+// EXPECT-EXIT 52
+// 切片 6c:方法分派——自有方法(record/ADT、带参、this match、
+// 方法调方法、链式)+ 跨模块类型方法。
+// 7+18+8+60+9-50=52。
+import Shape.{Pt, Tok, Tick, Tock}
+
+fun main(): i32 {
+    val p = Pt(3, 4)
+    val a = p.sum()
+    val q = p.scaled(6)
+    val b = q.x
+    val c = if p.is_far() { 100 } else { 8 }
+    val t1 = Tick(60)
+    val t2 = Tock("frondlang")
+    var acc = a + b + c + t1.weight() + t2.weight()
+    if q.is_far() { acc = acc - 50 }
+    acc as i32
+}

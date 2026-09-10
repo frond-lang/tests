@@ -1,0 +1,15 @@
+// EXPECT-EXIT 132
+// 切片 6c:trait 默认方法——Tag 实现 Labeled 只覆写 name,默认
+// label() 体经 this 派发到覆写实现;Box 无 trait(默认 name 的
+// "?" 仅经显式方法调用验证...实际未实现 trait 不参与)。
+// len("item:tag-x")=10、len("box")=3、100+10+3+19=132。
+import Defs.{Box, Tag}
+
+fun main(): i32 {
+    val t = Tag("x")
+    val b = Box(5)
+    var acc: i64 = 100
+    acc = acc + t.label().len() as i64
+    acc = acc + b.name().len() as i64
+    acc + 19 as i32
+}

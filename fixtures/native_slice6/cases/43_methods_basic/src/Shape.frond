@@ -1,0 +1,22 @@
+pub type Pt = Pt(pub x: i64, pub y: i64) {
+    pub fun sum(): i64 {
+        x + y
+    }
+
+    pub fun scaled(k: i64): Pt {
+        Pt(x * k, y * k)
+    }
+
+    pub fun is_far(): bool {
+        sum() > 10
+    }
+}
+
+pub type Tok = | Tick(i64) | Tock(str) {
+    pub fun weight(): i64 {
+        match this {
+            Tick(n) => n
+            Tock(s) => s.len() as i64
+        }
+    }
+}
