@@ -1,0 +1,25 @@
+// EXPECT-EXIT 16
+// 切片 6g:repr 全面(record/ADT/数组/nullable/Throw/bool 经 repr_value_ir;
+// 引擎 format_value 格式对齐:Pt(x: 3, y: 4)=14、[1, 2, 3]=9、Red=3、
+// 7??0=7、Ok(5)=5、true=4 → 42 - 26 = 16。
+type Pt = Pt(x: i64, y: i64)
+type Tok = | Red | Green(i64)
+import std.io.Console
+
+fun main(): i32 {
+    val p = Pt(3, 4)
+    val a = [1, 2, 3]
+    val t1 = Red
+    val n1: i64? = 7
+    val inner = n1 ?? 0
+    val s1 = p.repr()
+    val s2 = a.repr()
+    val s3 = t1.repr()
+    val okv = Ok(5)
+    val s5 = okv.repr()
+    val b1 = true.repr()
+    // "Pt(x: 3, y: 4)" len=14;"[1, 2, 3]"=9;"Red"=3;"7"=1;"Ok(5)"=4;"true"=4
+    val total = s1.len() as i32 + s2.len() as i32 + s3.len() as i32
+        + inner as i32 + s5.len() as i32 + b1.len() as i32
+    total - 26
+}
